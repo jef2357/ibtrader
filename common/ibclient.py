@@ -192,10 +192,117 @@ class ibClient(EClient):
     # MARKET DATA FUNCTIONS
     ################################################################################
 
-    # def reqMktData() --- EClient function
+    # def reqMktData(self, reqId:TickerId, contract:Contract,
+    #                genericTickList:str, snapshot:bool, regulatorySnapshot: bool,
+    #                mktDataOptions:TagValueList)
+    """Call this function to request market data. The market data
+        will be returned by the tickPrice and tickSize events.
 
+        reqId: TickerId - The ticker id. Must be a unique value. When the
+            market data returns, it will be identified by this tag. This is
+            also used when canceling the market data.
+        contract:Contract - This structure contains a description of the
+            Contractt for which market data is being requested.
+        genericTickList:str - A commma delimited list of generic tick types.
+            Tick types can be found in the Generic Tick Types page.
+            Prefixing w/ 'mdoff' indicates that top mkt data shouldn't tick.
+            You can specify the news source by postfixing w/ ':<source>.
+            Example: "mdoff,292:FLY+BRF"
+        snapshot:bool - Check to return a single snapshot of Market data and
+            have the market data subscription cancel. Do not enter any
+            genericTicklist values if you use snapshots.
+        regulatorySnapshot: bool - With the US Value Snapshot Bundle for stocks,
+            regulatory snapshots are available for 0.01 USD each.
+        mktDataOptions:TagValueList - For internal use only.
+            Use default value XYZ. """
+    
+    # def cancelMktData(self, reqId:TickerId):
+    """After calling this function, market data for the specified id
+        will stop flowing.
 
+        reqId: TickerId - The ID that was specified in the call to
+            reqMktData(). """
+    
+    # def reqMarketDataType(self, marketDataType:int):
+    """The API can receive frozen market data from Trader
+        Workstation. Frozen market data is the last data recorded in our system.
+        During normal trading hours, the API receives real-time market data. If
+        you use this function, you are telling TWS to automatically switch to
+        frozen market data after the close. Then, before the opening of the next
+        trading day, market data will automatically switch back to real-time
+        market data.
 
-            
+        marketDataType:int - 1 for real-time streaming market data or 2 for
+            frozen market data"""
+    
+    # def reqSmartComponents(self, reqId: int, bboExchange: str)
 
+    # def reqMarketRule(self, marketRuleId: int):
 
+    # def reqTickByTickData(self, reqId: int, contract: Contract, tickType: str,
+    #                      numberOfTicks: int, ignoreSize: bool)
+
+    # def cancelTickByTickData(self, reqId: int)
+
+    ################################################################################
+    # Options
+    ################################################################################
+
+    # def calculateImpliedVolatility(self, reqId:TickerId, contract:Contract,
+    #                               optionPrice:float, underPrice:float,
+    #                               implVolOptions:TagValueList):
+    """Call this function to calculate volatility for a supplied
+        option price and underlying price. Result will be delivered
+        via EWrapper.tickOptionComputation()
+
+        reqId:TickerId -  The request id.
+        contract:Contract -  Describes the contract.
+        optionPrice:double - The price of the option.
+        underPrice:double - Price of the underlying."""
+
+    # def cancelCalculateImpliedVolatility(self, reqId:TickerId):
+    """Call this function to cancel a request to calculate
+        volatility for a supplied option price and underlying price.
+
+        reqId:TickerId - The request ID.  """
+    
+    #def calculateOptionPrice(self, reqId:TickerId, contract:Contract,
+    #                         volatility:float, underPrice:float,
+    #                         optPrcOptions:TagValueList):
+    """Call this function to calculate option price and greek values
+        for a supplied volatility and underlying price.
+
+        reqId:TickerId -    The ticker ID.
+        contract:Contract - Describes the contract.
+        volatility:double - The volatility.
+        underPrice:double - Price of the underlying."""
+    
+    #def cancelCalculateOptionPrice(self, reqId:TickerId):
+    """Call this function to cancel a request to calculate the option
+        price and greek values for a supplied volatility and underlying price.
+
+        reqId:TickerId - The request ID.  """
+
+    #def exerciseOptions(self, reqId:TickerId, contract:Contract,
+    #                    exerciseAction:int, exerciseQuantity:int,
+    #                    account:str, override:int):
+    """reqId:TickerId - The ticker id. multipleust be a unique value.
+        contract:Contract - This structure contains a description of the
+            contract to be exercised
+        exerciseAction:int - Specifies whether you want the option to lapse
+            or be exercised.
+            Values are 1 = exercise, 2 = lapse.
+        exerciseQuantity:int - The quantity you want to exercise.
+        account:str - destination account
+        override:int - Specifies whether your setting will override the system's
+            natural action. For example, if your action is "exercise" and the
+            option is not in-the-money, by natural action the option would not
+            exercise. If you have override set to "yes" the natural action would
+             be overridden and the out-of-the money option would be exercised.
+            Values are: 0 = no, 1 = yes."""
+    
+    ################################################################################
+    # Orders
+    ################################################################################
+
+    
