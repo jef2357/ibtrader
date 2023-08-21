@@ -192,6 +192,7 @@ class ibClient(EClient):
     # MARKET DATA FUNCTIONS
     ################################################################################
 
+    # def reqMktData() --- EClient function
 
 
 
