@@ -11,13 +11,12 @@ import ibapi.comm as ibcomm
 logger = logging.getLogger(__name__)
 
 class ibProcessor(threading.Thread):
-    def __init__(self, ib_connection, in_queue, in_queue_lock, decoder_list, global_message_list, print_lock):
+    def __init__(self, ib_connection, in_queue, in_queue_lock, decoder, print_lock):
         super().__init__(name = 'processor')
         self.ib_connection = ib_connection
         self.in_queue = in_queue
         self.in_queue_lock = in_queue_lock
-        self.decoder_list = decoder_list
-        self.global_mesage_list = global_message_list
+        self.decoder = decoder
         self.print_lock = print_lock
         self.stop_event = threading.Event()
 
@@ -44,57 +43,66 @@ class ibProcessor(threading.Thread):
             logger.error("ERROR %s %s %s", reqId, errorCode, errorString)
 
     # determine which decoder (and thereby which wrapper) to use
-    def choose_decoder(self, fields, decoder_list, global_message_list):
-        return decoder_list[0]
+    #def choose_decoder(self, fields, decoder_list):
+    #    return decoder_list[0]
 
     # This run function to be used for the thread target is adapted from the original ib api eEClient run method
     def run(self):
+        self.unset_stop_event()
         try:
             while not self.stop_event.is_set(): # or not self.in_queue.empty():
                 try:
                     try:
                         message = self.in_queue.get(block=True, timeout=0.01)
                         if len(message) > MAX_MSG_LEN:
-                            with self.print_lock:
-                                print("processor thread: bad message length")
+                            logger.error("processor thread: bad message length")
                             self.error(NO_VALID_ID, BAD_LENGTH.code(), "%s:%d:%s" % (BAD_LENGTH.msg(), len(message), message))
-                            with self.print_lock:
-                                print("processor thread: disconnecting")
+                            logger.error("processor thread: disconnecting")
+                            self.set_stop_event()
                             self.ib_connection.disconnect()
                             break
                     except queue.Empty:
                         #print("processor thread: in-queue is empty")
-                        logger.debug("queue.get: empty")
+                        #logger.debug("queue.get: empty")
+                        pass
                     else:
                         fields = ibcomm.read_fields(message)
-                        #with self.print_lock:
-                        #    print("+++++ processor thread: message read from in-queue --- message: ", message, ", in-queue size: ", self.in_queue.qsize())
-                        #    print("+++++ processor thread: message fields: ", fields)
-                        logger.debug("fields %s", fields)
+                        logger.info("fields %s", fields)
                         # 
                         # this starts execution chain that ends up at wrapper handler functions
-                        chosen_decoder = self.choose_decoder(fields, self.decoder_list, self. global_mesage_list)
-                        chosen_decoder.interpret(fields)    
-                        #
+                        self.decoder.interpret(fields)    
+
                 except ibutils.BadMessage:
-                    logger.info("BadMessage")
-                    with self.print_lock:
-                        print("processor thread: bad message")
-                        print("processor thread: disconnecting from IB API")
-                    self.ib_connection.disconnect()
+                    logger.error("processor thread: bad message")
+                    logger.error("processor thread: disconnecting from IB API")
                     self.set_stop_event()
+                    self.ib_connection.disconnect()
 
                 #print("processor thread: connection: ", self.ib_connection.ib_is_connected(), " queue size: ", self.in_queue.qsize())
-                logger.debug("conn:%d queue.sz:%d", self.ib_connection.isConnected(), self.in_queue.qsize())
+                if self.in_queue.qsize() > 0:
+                    logger.info("conn:%d queue.sz:%d", self.ib_connection.isConnected(), self.in_queue.qsize())
         finally:
-            with self.print_lock:
-                print("processor thread: thread stopping")
-            self.set_stop_event()
+            if self.stop_event.is_set() == True:
+                logger.info("processor thread: thread stopped")
+            else:
+                self.set_stop_event()
+                logger.info("processor thread stopped")
 
     def set_stop_event(self):
-        self.stop_event.set()
-        with self.print_lock:
-            print("processor thread: stop event set")
+        if self.stop_event.is_set() == False:
+            self.stop_event.set()
+            logger.info("processor thread: stop event set")
+        # else:
+        #     logger.info("processor thread: stop event already set")
+
+    def unset_stop_event(self):
+        if self.stop_event.is_set() == True:
+            self.stop_event.clear()
+            logger.info("processor thread: stop event cleared")
+        # else:
+        #     logger.info("processor thread: stop event already cleared")
+
+
 
     
 

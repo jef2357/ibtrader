@@ -22,8 +22,11 @@ class ibSender(Thread):
         self.out_queue_lock = out_queue_lock
         self.print_lock = print_lock
         self.stop_event = threading.Event()
+        #logger.info("sender thread init")
 
     def run(self):
+        logger.info("sender thread: thread starting")
+        self.unset_stop_event()
         time1_ = 0.0
         try:
             while not self.stop_event.is_set(): # or not self.out_queue.empty():
@@ -44,32 +47,49 @@ class ibSender(Thread):
                                     self.ib_connection.sendMsg(message)
                                     time1_ = time2_
                                     _sent = True
+                                    #with self.print_lock:
+                                    #    print("inside timer loop - sender thread")
                                     # DEBUG print("----- sender thread: message sent to ib api --- message: ", message, ", out-queue size: ", self.out_queue.qsize())
                                 else:
                                     #pass
                                     time.sleep((1/(self.max_message_rate-1) - (time2_ - time1_)))
+                            # with self.print_lock:
+                            #     print("sender thread")
+                            #logger.info("%s %s %s %s", "sender thread: message sent: ", message, " Out-Queue Size: ", str(self.out_queue.qsize()))
+                            logger.info("%s %s", "sender thread: message sent: Out-Queue Size: ", str(self.out_queue.qsize()))
                     except queue.Empty:
                         #print("sender thread: Out Queue is Empty")
                         pass
                 else:
-                    with self.print_lock:
-                        print("sender thread: Not connected to IB API")
-                        self.set_stop_event()
-                        self.ib_connection.disconnect()
+                    logger.error("sender thread: not connected to IB API")
+                    self.set_stop_event()
+                    #self.ib_connection.disconnect()
         except:
-            logger.exception('sender thread: unhandled exception in ibSender thread')
+            logger.exception('sender thread: unhandled exception in sender thread')
             self.set_stop_event()
-            self.ib_connection.disconnect()
+            #self.ib_connection.disconnect()
         finally:
-            with self.print_lock:
-                print("sender thread: thread stopping")
-            self.set_stop_event()
-            self.ib_connection.disconnect()
+            if self.stop_event.is_set() == True:
+                logger.info("sender thread: thread stopped")
+            else:
+                self.set_stop_event()
+                logger.info("sender thread: thread stopped")
+                #self.ib_connection.disconnect()
 
     def set_stop_event(self):
-        self.stop_event.set()
-        with self.print_lock:
-            print("sender thread: stop event set")
+        if self.stop_event.is_set() == False:
+            self.stop_event.set()
+            logger.info("sender thread: stop event set")
+        # else:
+        #     logger.info("sender thread: stop event already set")
+
+    def unset_stop_event(self):
+        if self.stop_event.is_set() == True:
+            self.stop_event.clear()
+            logger.info("sender thread: stop event cleared")
+        # else:
+        #     logger.info("sender thread: stop event already cleared")
+
 
    
 

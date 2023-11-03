@@ -19,11 +19,12 @@ class ibReader(threading.Thread):
         self.stop_event = threading.Event()
 
     def run(self):
+        self.unset_stop_event()
         try:
             buf = b""
             while not self.stop_event.is_set():
                 if self.ib_connection.isConnected():
-                    data = self.ib_connection.rcvMsg()
+                    data = self.ib_connection.recvMsg()
                     
                     #print("reader thread: received data ", len(data))
                     #logger.debug("reader loop, recvd size %d", len(data))
@@ -39,37 +40,46 @@ class ibReader(threading.Thread):
                         if msg:
                             with self.in_queue_lock:
                                 self.in_queue.put(msg)
+                            logger.info("%s %s %s %s", "QUEUED (in) ibReader: ", msg, " In-Queue Size: ", str(self.in_queue.qsize()))
                             #DEBUG if not self.in_queue.empty():
                             #    with self.print_lock:
                             #        print("-o-o- reader thread: message received --- message: ", msg, ", in-queue size: ", self.in_queue.qsize())
                         else:
                             #DEBUGwith self.print_lock:
                             #    print("reader thread: more incoming packet(s) are needed")
-                            logger.debug("more incoming packet(s) are needed ")
+                            logger.error("more incoming packet(s) are needed ")
                             break
                 else:
-                    with self.print_lock:
-                        print("reader thread: not connected to IB API")
+                    logger.error("reader thread: not connected to IB API")
                     pass
             
         except socket.timeout:
-            with self.print_lock:
-                print("reader thread: socket timeout")
-                self.stop_event()
-                self.ib_connection.disconnect()
+            self.set_stop_event()
+            #self.ib_connection.disconnect()
+            logger.error("reader thread: socket timeout")
         except:
-            with self.print_lock:
-                print("reader thread: unhandled exception")
-            logger.exception('unhandled exception in ibReader thread')
-            self.stop_event()
-            self.ib_connection.disconnect()
+            self.set_stop_event()
+            #self.ib_connection.disconnect()
+            logger.exception('reader thread: unhandled exception')
         finally:
-            with self.print_lock:
-                print("reader thread: thread stopping")
-            self.stop_event()
-            self.ib_connection.disconnect()
+            if self.stop_event.is_set() == True:
+                logger.info("reader thread: thread stopped")
+            else:
+                self.set_stop_event()
+                #self.ib_connection.disconnect()
+                logger.info("reader thread: thread stopped")
 
-    def set_stop_event(self, timeout=None):
-        self.stop_event.set()
-        with self.print_lock:
-            print("reader thread: stop event set")
+    def set_stop_event(self):
+        if self.stop_event.is_set() == False:
+            self.stop_event.set()
+            logger.info("reader thread: stop event set")
+        # else:
+        #     logger.info("reader thread: stop event already set")
+
+    def unset_stop_event(self):
+        if self.stop_event.is_set() == True:
+            self.stop_event.clear()
+            logger.info("reader thread: stop event cleared")
+        # else:
+        #     logger.info("reader thread: stop event already cleared")
+

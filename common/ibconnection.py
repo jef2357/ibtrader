@@ -34,7 +34,7 @@ class ibConnection:
 
     # OVERLOADED from ib's connection.py
     def connect(self):
-        logger.debug("ibconnection.connect() Acquiring connection ock")
+        logger.debug("ibconnection.connect() Acquiring connection lock")
         with self.lock:
             try:
                 logger.debug("Attempting to create socket")
@@ -61,7 +61,7 @@ class ibConnection:
         logger.debug("ibconnection.connect() released connection lock")
 
     def disconnect(self):
-        logger.debug("ibconnection.disconnect() Acquiring connection lock")
+        #logger.debug("ibconnection.disconnect() Acquiring connection lock")
         with self.lock:
             try:
                 if self.socket is not None:
@@ -75,8 +75,6 @@ class ibConnection:
                     logger.error("No socket exists to close")
             except:
                 logger.error("Error closing socket")
-            finally:
-                self.lock.release()
         logger.debug("ibconnection.disconnect() released connection lock")
 
     def isConnected(self):
@@ -95,9 +93,10 @@ class ibConnection:
                 logger.error("exception from ibConnection.sendMsg %s", sys.exc_info())
                 raise
             finally:
-                logger.debug("ibconnection.sendMsg releasing lock")
+                pass
+                #logger.debug("ibconnection.sendMsg releasing lock")
 
-            logger.debug("ibconnection.ssendMsg: sent: %d", nSent)
+            logger.debug("ibconnection.sendMsg: sent: %d", nSent)
         logger.debug("ibconnection.sendMsg released connection lock")
         return nSent
 
@@ -136,7 +135,7 @@ class ibConnection:
             logger.debug("len %d raw:%s|", len(_buffer), _buffer)
 
             if len(_buffer) < 4096:
-                cont = False
+                _continue = False
 
         return _all_buffer
 

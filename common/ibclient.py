@@ -9,8 +9,11 @@ from ibapi.client import EClient
 from ibapi.server_versions import *
 from ibapi.common import *
 from ibapi.errors import *
-from ibapi.utils import current_fn_name, BadMessage, iswrapper
+from ibapi.utils import current_fn_name, BadMessage, ClientException
+from ibapi.comm import make_field, make_field_handle_empty, read_fields
+from ibapi.message import OUT
 
+from common.ibcommon import overloaded
 from common.ibconnection import ibConnection
 from engine.ibreader import ibReader
 from engine.ibsender import ibSender
@@ -18,6 +21,7 @@ from engine.ibprocessor import ibProcessor
 
 
 logger = logging.getLogger(__name__)
+
 
 
 class ibClient(EClient):
@@ -29,7 +33,7 @@ class ibClient(EClient):
 
         self.reset()
     
-    @iswrapper
+    @overloaded
     def reset(self):
         self.nKeybIntHard = 0
         self.conn = None
@@ -40,7 +44,7 @@ class ibClient(EClient):
         self.serverVersion_ = None
         self.connTime = None
         self.connState = None
-        self.optCapab = None
+        self.optCapab = ""
         self.reader = None
         self.decoder = None
         self.setConnState(EClient.DISCONNECTED)
@@ -62,35 +66,90 @@ class ibClient(EClient):
         self.time = datetime.datetime.now()
         self.nextValidOrderId = None
 
-    # def setConnState() --- EClient function
+        self.message_log = None
+
+    # def setConnState(self, connState) --- EClient function
     
-    @iswrapper
+    @overloaded
     def sendMsg(self, msg):
         full_msg = comm.make_msg(msg)
         logger.info("%s %s %s", "SENDING", current_fn_name(1), full_msg)
 
-        message_ququed = False
+        message_queued = False
         if self.isConnected():
             with self.out_queue_lock:
                 try:
                     self.out_queue.put(full_msg, block=True, timeout=0.01)
-                    message_ququed = True
+                    message_queued = True
                 except:
                     logger.error("Error writing to the output queue")
                     #return False
                 finally:
-                    if message_ququed:
-                        logger.info("message queued: ", msg, ":", full_msg, "|", "Queue size:", self.out_queue.qsize())
+                    if message_queued:
+                        logger.info("%s %s %s %s", "QUEUED (out) sendMsg(): ", full_msg, " out_queue Size: ", str(self.out_queue.qsize()))
+                    else:
+                        logger.error("Error putting message in out_queue")
                         #return True
         else:
             logger.error("Tried sending message while not connected to IB API")
             #return False
 
-    # def logRequest() --- EClient function
-    # def startApi() --- EClient function
+    # def logRequest(self, fnName, fnParams) --- EClient function
 
-    @iswrapper
+    @overloaded
+    def startApi(self):
+        """  Initiates the message exchange between the client application and
+        the TWS/IB Gateway. """
+        # Overloaded from IB's EClient in order to directly call the sendMsg function from
+        # the connection object instead of using this client's sendMsg function.  This 
+        # client's sendMsg function is an overloaded definition which uses the sender queue
+        # to enqueue messages for the sender thread.  Sinmpler at this point to just call
+        # the connection object's sendMsg function directly here. (threads are not started)
+
+        self.logRequest(current_fn_name(), vars())
+
+        if not self.isConnected():
+            self.wrapper.error(NO_VALID_ID, NOT_CONNECTED.code(),
+                               NOT_CONNECTED.msg())
+            return
+
+        try: 
+            
+            VERSION = 2
+            
+            msg = make_field(OUT.START_API) \
+               + make_field(VERSION)    \
+               + make_field(self.clientId)
+    
+            if self.serverVersion() >= MIN_SERVER_VER_OPTIONAL_CAPABILITIES:
+                msg += make_field(self.optCapab)
+                
+        except ClientException as ex:
+            self.wrapper.error(NO_VALID_ID, ex.code, ex.msg + ex.text)
+            return
+
+        full_msg = comm.make_msg(msg)
+        logger.info("%s %s %s", "SENDING", "startApi()", full_msg)
+        self.conn.sendMsg(full_msg)
+
+    @overloaded
     def connect(self, host, port, clientId):
+        """This function must be called before any other. There is no
+        feedback for a successful connection, but a subsequent attempt to
+        connect will return the message \"Already connected.\"
+
+        host:str - The host name or IP address of the machine where TWS is
+            running. Leave blank to connect to the local host.
+        port:int - Must match the port specified in TWS on the
+            Configure>API>Socket Port field.
+        clientId:int - A number used to identify this client connection. All
+            orders placed/modified from this client will be associated with
+            this client identifier.
+
+            Note: Each client MUST connect with a unique clientId.
+        
+        For now, all threads are started in this function
+        """
 
         try:
             self.host = host
@@ -120,9 +179,10 @@ class ibClient(EClient):
 
             #v100version = "v%d..%d" % (MIN_CLIENT_VER, 101)
             msg = comm.make_msg(v100version)
-            logger.debug("ibclient.connect() msg %s", msg)
+            #logger.debug("ibclient.connect() msg %s", msg)
             msg2 = str.encode(v100prefix, 'ascii') + msg
-            logger.debug("ibClient.connect() REQUEST %s", msg2)
+            #logger.debug("ibClient.connect() REQUEST %s", msg2)
+            logger.info("%s %s %s", "SENDING connect():", current_fn_name(1), msg2)
             self.conn.sendMsg(msg2)
 
             self.decoder = decoder.Decoder(self.wrapper, self.serverVersion())
@@ -149,44 +209,86 @@ class ibClient(EClient):
 
             (server_version, conn_time) = fields
             server_version = int(server_version)
-            logger.debug("ibClient.connect() ANSWER Version:%d time:%s", server_version, conn_time)
+            logger.info("ibClient.connect() ANSWER Version:%d time:%s", server_version, conn_time)
             self.connTime = conn_time
             self.serverVersion_ = server_version
             self.decoder.serverVersion = self.serverVersion()
 
             self.setConnState(EClient.CONNECTED)
 
-            self.reader = ibReader(self.conn, self.in_queue, self.in_queue_lock, self.print_lock)            
-            self.reader.start()   # start thread
-            self.sender = ibSender(self.conn, self.out_queue, self.out_queue_lock, self.print_lock)
-            self.sender.start()
-            self.processor = ibProcessor(self.conn, self.in_queue, self.in_queue_lock, self.decoder, self.message_list, self.print_lock)
-
             logger.info("ibClient.connect() sent startApi")
             self.startApi()
             self.wrapper.connectAck()
+
+            self.reader = ibReader(self.conn, self.in_queue, self.in_queue_lock, self.print_lock)            
+            self.sender = ibSender(self.conn, self.out_queue, self.out_queue_lock, self.print_lock)
+            self.processor = ibProcessor(self.conn, self.in_queue, self.in_queue_lock, self.decoder, self.print_lock)
+            self.reader.start()
+            self.sender.start()
+            self.processor.start()
+
+            self.message_log = []
+
         except socket.error:
             if self.wrapper:
                 self.wrapper.error(NO_VALID_ID, CONNECT_FAIL.code(), CONNECT_FAIL.msg())
             logger.info("could not connect")
             self.disconnect()
 
-    # def disconnect() --- EClient function
+    @overloaded
+    def disconnect(self):
+        """Call this function to terminate the connections with TWS.
+        Calling this function does not cancel orders that have already been
+        sent."""
+        while not self.in_queue.empty() or not self.out_queue.empty():
+            pass
+        
+        if self.conn is not None:
+            logger.info("disconnecting")
+            self.sender.set_stop_event()
+            self.sender.join()
+            self.reader.set_stop_event()
+            self.reader.join()
+            self.processor.set_stop_event()
+            self.processor.join()
+            self.conn.disconnect()
+            self.wrapper.connectionClosed()
+            self.setConnState(EClient.DISCONNECTED)
+            self.reset()
+    
     # def isConnected() --- EClient function
-    # def keyboardInterrupt() --- EClient function
-    # def keyboardInterruptHard() --- EClient function
-    # def setconnectionOptions() --- EClient function
-    # def msgLoopTmo() --- EClient function
-    # def msgLoopRec() --- EClient function
+    """Call this function to check if there is a connection with TWS"""
 
-    @iswrapper
+    # def keyboardInterrupt() --- EClient function
+    #intended to be overloaded
+
+    # def keyboardInterruptHard() --- EClient function
+
+    # def setconnectionOptions() --- EClient function
+
+    # def msgLoopTmo() --- EClient function
+    #intended to be overloaded
+
+    # def msgLoopRec() --- EClient function
+    #intended to be overloaded
+
+    @overloaded
     def run(self):
         pass
 
     # def reqCurrentTime() --- EClient function
+    """Asks the current system time on the server side."""
+
     # def serverVersion() --- EClient function
+    """Returns the version of the TWS instance to which the API
+        application is connected."""
+    
     # def setServerLogLevel() --- EClient function
+    """The default detail level is ERROR. For more details, see API
+        Logging."""
+    
     # def twsConnectionTime() --- EClient function
+    """Returns the time the API application made a connection to TWS."""
 
     ################################################################################
     # MARKET DATA FUNCTIONS
