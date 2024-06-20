@@ -8,7 +8,6 @@ import ibapi.comm as ibcomm
 
 logger = logging.getLogger(__name__)
 
-
 class ibReader(threading.Thread):
     def __init__(self, ib_connection, in_queue, in_queue_lock, print_lock):
         super().__init__(name='reader')
@@ -17,41 +16,34 @@ class ibReader(threading.Thread):
         self.in_queue_lock = in_queue_lock
         self.print_lock = print_lock
         self.stop_event = threading.Event()
+        self.connected_to_api = False
 
     def run(self):
+        logger.debug("sreader thread: thread starting")
         self.unset_stop_event()
         try:
             buf = b""
             while not self.stop_event.is_set():
                 if self.ib_connection.isConnected():
+                    self.connected_to_api = True
                     data = self.ib_connection.recvMsg()
-                    
-                    #print("reader thread: received data ", len(data))
                     #logger.debug("reader loop, recvd size %d", len(data))
                     buf += data
 
                     while len(buf) > 0:
                         (size, msg, buf) = ibcomm.read_msg(buf)
-                        #logger.debug("resp %s", buf.decode('ascii'))
-                        #with self.lock:
-                        #    print("reader thread: size: ", size, " message size: ", len(msg), " buffer: ", buf)
-                        #logger.debug("size:%d msg.size:%d msg:|%s| buf:%s|", size, len(msg), buf, "|")
 
                         if msg:
                             with self.in_queue_lock:
                                 self.in_queue.put(msg)
-                            logger.info("%s %s %s %s", "QUEUED (in) ibReader: ", msg, " In-Queue Size: ", str(self.in_queue.qsize()))
-                            #DEBUG if not self.in_queue.empty():
-                            #    with self.print_lock:
-                            #        print("-o-o- reader thread: message received --- message: ", msg, ", in-queue size: ", self.in_queue.qsize())
+                            #logger.debug("%s %s %s %s", "QUEUED (in) ibReader: ", msg, " In-Queue Size: ", str(self.in_queue.qsize()))
                         else:
-                            #DEBUGwith self.print_lock:
-                            #    print("reader thread: more incoming packet(s) are needed")
                             logger.error("more incoming packet(s) are needed ")
                             break
                 else:
-                    logger.error("reader thread: not connected to IB API")
-                    pass
+                    if self.connected_to_api is True:
+                        logger.error("reader thread: not connected to IB API")
+                        self.connected_to_api = False
             
         except socket.timeout:
             self.set_stop_event()
@@ -72,14 +64,14 @@ class ibReader(threading.Thread):
     def set_stop_event(self):
         if self.stop_event.is_set() == False:
             self.stop_event.set()
-            logger.info("reader thread: stop event set")
+            logger.debug("reader thread: stop event set")
         # else:
         #     logger.info("reader thread: stop event already set")
 
     def unset_stop_event(self):
         if self.stop_event.is_set() == True:
             self.stop_event.clear()
-            logger.info("reader thread: stop event cleared")
+            logger.debug("reader thread: stop event cleared")
         # else:
         #     logger.info("reader thread: stop event already cleared")
 

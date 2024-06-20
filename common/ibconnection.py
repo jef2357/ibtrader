@@ -18,11 +18,9 @@ from ibapi.errors import FAIL_CREATE_SOCK
 from ibapi.errors import CONNECT_FAIL
 from ibapi.common import NO_VALID_ID
 
-
 #TODO: support SSL !!
 
 logger = logging.getLogger(__name__)
-
 
 class ibConnection:
     def __init__(self, host, port, connection_lock, wrapper=None):
@@ -57,11 +55,10 @@ class ibConnection:
             else:
                 logger.debug("Succesfully connected to socket " + str(self.host)+":"+str(self.port))
 
-            self.socket.settimeout(1)   #non-blocking
+            self.socket.settimeout(2)   #non-blocking
         logger.debug("ibconnection.connect() released connection lock")
 
     def disconnect(self):
-        #logger.debug("ibconnection.disconnect() Acquiring connection lock")
         with self.lock:
             try:
                 if self.socket is not None:
@@ -81,11 +78,8 @@ class ibConnection:
         return self.socket is not None
 
     def sendMsg(self, msg):
-        logger.debug("ibconnection.sendMsg acquiring connection lock")
         with self.lock:
             if not self.isConnected():
-                logger.debug("sendMsg attempted while not connected, releasing lock")
-                #self.lock.release()
                 return 0
             try:
                 nSent = self.socket.send(msg)
@@ -94,7 +88,6 @@ class ibConnection:
                 raise
             finally:
                 pass
-                #logger.debug("ibconnection.sendMsg releasing lock")
 
             logger.debug("ibconnection.sendMsg: sent: %d", nSent)
         logger.debug("ibconnection.sendMsg released connection lock")
@@ -102,20 +95,19 @@ class ibConnection:
 
     def recvMsg(self):
         if not self.isConnected():
-            logger.debug("recvMsg attempted while not connected, releasing lock")
             return b""
         try:
             buf = self._recvAllMsg()
             # receiving 0 bytes outside a timeout means the connection is either
             # closed or broken
             if len(buf) == 0:
-                logger.debug("socket either closed or broken, disconnecting")
+                logger.error("socket either closed or broken, disconnecting")
                 self.disconnect()
         except socket.timeout:
-            logger.debug("socket timeout from recvMsg %s", sys.exc_info())
+            logger.error("socket timeout from recvMsg %s", sys.exc_info())
             buf = b""
         except socket.error:
-            logger.debug("socket broken, disconnecting")
+            logger.error("socket broken, disconnecting")
             self.disconnect()
             buf = b""
         except OSError:
@@ -132,7 +124,7 @@ class ibConnection:
         while _continue and self.isConnected():
             _buffer = self.socket.recv(4096)
             _all_buffer += _buffer
-            logger.debug("len %d raw:%s|", len(_buffer), _buffer)
+            #logger.debug("len %d raw:%s|", len(_buffer), _buffer)
 
             if len(_buffer) < 4096:
                 _continue = False

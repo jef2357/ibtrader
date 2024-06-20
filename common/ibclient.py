@@ -2,12 +2,14 @@ import logging
 import threading
 import queue
 import socket
-import datetime
+#import datetime
+from datetime import datetime
 
 from ibapi import comm, decoder, reader
 from ibapi.client import EClient
 from ibapi.server_versions import *
 from ibapi.common import *
+from ibapi.contract import Contract
 from ibapi.errors import *
 from ibapi.utils import current_fn_name, BadMessage, ClientException
 from ibapi.comm import make_field, make_field_handle_empty, read_fields
@@ -18,7 +20,7 @@ from common.ibconnection import ibConnection
 from engine.ibreader import ibReader
 from engine.ibsender import ibSender
 from engine.ibprocessor import ibProcessor
-
+from engine.ibdatabase import ibDBConn
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,6 @@ class ibClient(EClient):
     def __init__(self, wrapper):
         #EClient.__init__(self, wrapper=wrapper)
         self.wrapper = wrapper
-
         self.reset()
     
     @overloaded
@@ -49,6 +50,7 @@ class ibClient(EClient):
         self.decoder = None
         self.setConnState(EClient.DISCONNECTED)
         self.connectionOptions = None
+        self.reqid_log = None
 
         self.sender = None
         self.processor = None
@@ -63,13 +65,21 @@ class ibClient(EClient):
         self.in_queue = None
         self.out_queue = None
         
-        self.time = datetime.datetime.now()
+        # self.db_config = None
+        # self.db_conn = None
+        # self.db_cur = None
+        # self.db_cur_lock = None
+        
+        self.time = datetime.now()
         self.nextValidOrderId = None
 
-        self.message_log = None
+        self.client_reqid_log = {}
 
     # def setConnState(self, connState) --- EClient function
-    
+
+    def client_db_setup(self, config):
+        self.client_db = ibDBConn(config)
+
     @overloaded
     def sendMsg(self, msg):
         full_msg = comm.make_msg(msg)
@@ -94,8 +104,6 @@ class ibClient(EClient):
             logger.error("Tried sending message while not connected to IB API")
             #return False
 
-    # def logRequest(self, fnName, fnParams) --- EClient function
-
     @overloaded
     def startApi(self):
         """  Initiates the message exchange between the client application and
@@ -114,7 +122,6 @@ class ibClient(EClient):
             return
 
         try: 
-            
             VERSION = 2
             
             msg = make_field(OUT.START_API) \
@@ -226,6 +233,8 @@ class ibClient(EClient):
             self.reader.start()
             self.sender.start()
             self.processor.start()
+            self.wrapper.wrapper_db.start()
+            
 
             self.message_log = []
 
@@ -240,6 +249,11 @@ class ibClient(EClient):
         """Call this function to terminate the connections with TWS.
         Calling this function does not cancel orders that have already been
         sent."""
+
+        #TODO:
+        #        Disconnect need to cancel data subscriptions so the inqueue will stop
+        #        filling up
+    
         while not self.in_queue.empty() or not self.out_queue.empty():
             pass
         
@@ -251,53 +265,21 @@ class ibClient(EClient):
             self.reader.join()
             self.processor.set_stop_event()
             self.processor.join()
+            self.wrapper.wrapper_db.set_stop_event()
+            self.wrapper.wrapper_db.join()
             self.conn.disconnect()
             self.wrapper.connectionClosed()
             self.setConnState(EClient.DISCONNECTED)
             self.reset()
-    
-    # def isConnected() --- EClient function
-    """Call this function to check if there is a connection with TWS"""
-
-    # def keyboardInterrupt() --- EClient function
-    #intended to be overloaded
-
-    # def keyboardInterruptHard() --- EClient function
-
-    # def setconnectionOptions() --- EClient function
-
-    # def msgLoopTmo() --- EClient function
-    #intended to be overloaded
-
-    # def msgLoopRec() --- EClient function
-    #intended to be overloaded
 
     @overloaded
     def run(self):
         pass
 
-    # def reqCurrentTime() --- EClient function
-    """Asks the current system time on the server side."""
-
-    # def serverVersion() --- EClient function
-    """Returns the version of the TWS instance to which the API
-        application is connected."""
-    
-    # def setServerLogLevel() --- EClient function
-    """The default detail level is ERROR. For more details, see API
-        Logging."""
-    
-    # def twsConnectionTime() --- EClient function
-    """Returns the time the API application made a connection to TWS."""
-
-    ################################################################################
-    # MARKET DATA FUNCTIONS
-    ################################################################################
-
-    # def reqMktData(self, reqId:TickerId, contract:Contract,
-    #                genericTickList:str, snapshot:bool, regulatorySnapshot: bool,
-    #                mktDataOptions:TagValueList)
-    """Call this function to request market data. The market data
+    def reqMktData(self, reqId:TickerId, contract:Contract,
+                    genericTickList:str, snapshot:bool, regulatorySnapshot: bool,
+                    mktDataOptions:TagValueList):
+        """Call this function to request market data. The market data
         will be returned by the tickPrice and tickSize events.
 
         reqId: TickerId - The ticker id. Must be a unique value. When the
@@ -317,94 +299,110 @@ class ibClient(EClient):
             regulatory snapshots are available for 0.01 USD each.
         mktDataOptions:TagValueList - For internal use only.
             Use default value XYZ. """
+
+        self.logRequest(current_fn_name(), vars())
+
+        self.client_reqid_log[reqId] = contract
+
+
+        if not self.isConnected():
+            self.wrapper.error(reqId, NOT_CONNECTED.code(),
+                               NOT_CONNECTED.msg())
+            return
+
+        if self.serverVersion() < MIN_SERVER_VER_DELTA_NEUTRAL:
+            if contract.deltaNeutralContract:
+                self.wrapper.error(reqId, UPDATE_TWS.code(),
+                    UPDATE_TWS.msg() + "  It does not support delta-neutral orders.")
+                return
+
+        if self.serverVersion() < MIN_SERVER_VER_REQ_MKT_DATA_CONID:
+            if contract.conId > 0:
+                self.wrapper.error(reqId, UPDATE_TWS.code(),
+                    UPDATE_TWS.msg() + "  It does not support conId parameter.")
+                return
+
+        if self.serverVersion() < MIN_SERVER_VER_TRADING_CLASS:
+            if contract.tradingClass:
+                self.wrapper.error( reqId, UPDATE_TWS.code(),
+                    UPDATE_TWS.msg() + "  It does not support tradingClass parameter in reqMktData.")
+                return
+
+        try:
+            
+            VERSION = 11
+            
+            # send req mkt data msg
+            flds = []
+            flds += [make_field(OUT.REQ_MKT_DATA),
+                make_field(VERSION),
+                make_field(reqId)]
     
-    # def cancelMktData(self, reqId:TickerId):
-    """After calling this function, market data for the specified id
-        will stop flowing.
-
-        reqId: TickerId - The ID that was specified in the call to
-            reqMktData(). """
+            # send contract fields
+            if self.serverVersion() >= MIN_SERVER_VER_REQ_MKT_DATA_CONID:
+                flds += [make_field(contract.conId),]
     
-    # def reqMarketDataType(self, marketDataType:int):
-    """The API can receive frozen market data from Trader
-        Workstation. Frozen market data is the last data recorded in our system.
-        During normal trading hours, the API receives real-time market data. If
-        you use this function, you are telling TWS to automatically switch to
-        frozen market data after the close. Then, before the opening of the next
-        trading day, market data will automatically switch back to real-time
-        market data.
-
-        marketDataType:int - 1 for real-time streaming market data or 2 for
-            frozen market data"""
+            flds += [make_field(contract.symbol),
+                make_field(contract.secType),
+                make_field(contract.lastTradeDateOrContractMonth),
+                make_field(contract.strike),
+                make_field(contract.right),
+                make_field(contract.multiplier), # srv v15 and above
+                make_field(contract.exchange),
+                make_field(contract.primaryExchange), # srv v14 and above
+                make_field(contract.currency),
+                make_field(contract.localSymbol) ] # srv v2 and above
     
-    # def reqSmartComponents(self, reqId: int, bboExchange: str)
-
-    # def reqMarketRule(self, marketRuleId: int):
-
-    # def reqTickByTickData(self, reqId: int, contract: Contract, tickType: str,
-    #                      numberOfTicks: int, ignoreSize: bool)
-
-    # def cancelTickByTickData(self, reqId: int)
-
-    ################################################################################
-    # Options
-    ################################################################################
-
-    # def calculateImpliedVolatility(self, reqId:TickerId, contract:Contract,
-    #                               optionPrice:float, underPrice:float,
-    #                               implVolOptions:TagValueList):
-    """Call this function to calculate volatility for a supplied
-        option price and underlying price. Result will be delivered
-        via EWrapper.tickOptionComputation()
-
-        reqId:TickerId -  The request id.
-        contract:Contract -  Describes the contract.
-        optionPrice:double - The price of the option.
-        underPrice:double - Price of the underlying."""
-
-    # def cancelCalculateImpliedVolatility(self, reqId:TickerId):
-    """Call this function to cancel a request to calculate
-        volatility for a supplied option price and underlying price.
-
-        reqId:TickerId - The request ID.  """
+            if self.serverVersion() >= MIN_SERVER_VER_TRADING_CLASS:
+                flds += [make_field(contract.tradingClass),]
     
-    #def calculateOptionPrice(self, reqId:TickerId, contract:Contract,
-    #                         volatility:float, underPrice:float,
-    #                         optPrcOptions:TagValueList):
-    """Call this function to calculate option price and greek values
-        for a supplied volatility and underlying price.
-
-        reqId:TickerId -    The ticker ID.
-        contract:Contract - Describes the contract.
-        volatility:double - The volatility.
-        underPrice:double - Price of the underlying."""
+            # Send combo legs for BAG requests (srv v8 and above)
+            if contract.secType == "BAG":
+                comboLegsCount = len(contract.comboLegs) if contract.comboLegs else 0
+                flds += [make_field(comboLegsCount),]
+                for comboLeg in contract.comboLegs:
+                        flds += [make_field(comboLeg.conId),
+                            make_field( comboLeg.ratio),
+                            make_field( comboLeg.action),
+                            make_field( comboLeg.exchange)]
     
-    #def cancelCalculateOptionPrice(self, reqId:TickerId):
-    """Call this function to cancel a request to calculate the option
-        price and greek values for a supplied volatility and underlying price.
-
-        reqId:TickerId - The request ID.  """
-
-    #def exerciseOptions(self, reqId:TickerId, contract:Contract,
-    #                    exerciseAction:int, exerciseQuantity:int,
-    #                    account:str, override:int):
-    """reqId:TickerId - The ticker id. multipleust be a unique value.
-        contract:Contract - This structure contains a description of the
-            contract to be exercised
-        exerciseAction:int - Specifies whether you want the option to lapse
-            or be exercised.
-            Values are 1 = exercise, 2 = lapse.
-        exerciseQuantity:int - The quantity you want to exercise.
-        account:str - destination account
-        override:int - Specifies whether your setting will override the system's
-            natural action. For example, if your action is "exercise" and the
-            option is not in-the-money, by natural action the option would not
-            exercise. If you have override set to "yes" the natural action would
-             be overridden and the out-of-the money option would be exercised.
-            Values are: 0 = no, 1 = yes."""
+            if self.serverVersion() >= MIN_SERVER_VER_DELTA_NEUTRAL:
+                if contract.deltaNeutralContract:
+                    flds += [make_field(True),
+                        make_field(contract.deltaNeutralContract.conId),
+                        make_field(contract.deltaNeutralContract.delta),
+                        make_field(contract.deltaNeutralContract.price)]
+                else:
+                    flds += [make_field(False),]
     
-    ################################################################################
-    # Orders
-    ################################################################################
-
+            flds += [make_field(genericTickList), # srv v31 and above
+                make_field(snapshot)] # srv v35 and above
     
+            if self.serverVersion() >= MIN_SERVER_VER_REQ_SMART_COMPONENTS:
+                flds += [make_field(regulatorySnapshot),]
+    
+            # send mktDataOptions parameter
+            if self.serverVersion() >= MIN_SERVER_VER_LINKING:
+                #current doc says this part if for "internal use only" -> won't support it
+                if mktDataOptions:
+                    raise NotImplementedError("not supported")
+                mktDataOptionsStr = ""
+                flds += [make_field(mktDataOptionsStr),]
+    
+            msg = "".join(flds)
+            
+        except ClientException as ex:
+            self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
+            return
+        
+        self.sendMsg(msg)
+
+        # TODO:
+        #   get function name and log that into the database entry with the req id
+        send_time = datetime.now().isoformat()
+        self.client_db.db_cur.execute(
+            "INSERT INTO reqid_list (source, reqid, send_time, req_func, symbol, security_type, exchange, currency) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            ("ib_api", reqId, send_time, "reqMktData", contract.symbol, contract.secType, contract.exchange, contract.currency)
+        )
+
+        pass

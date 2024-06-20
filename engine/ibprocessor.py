@@ -1,6 +1,11 @@
+#TODO:
+#   Add periodic logging of input queue size 
+#       every second?   5 seconds?  10 seconds?
+
 import logging
 import queue
 import threading
+import time
 
 #from ibapi.utils import BadMessage, current_fn_name, read_fields
 import ibapi.utils as ibutils
@@ -32,7 +37,7 @@ class ibProcessor(threading.Thread):
                     del prms['self']
                 else:
                     prms = fnParams
-                logger.info("ANSWER %s %s", fnName, prms)
+                #logger.info("ANSWER %s %s", fnName, prms)
     # This is a wrapper function that is copied here so that the processor object does not need to be passed
     # a wrapper object instance when constructed
     def error(self, reqId:TickerId, errorCode:int, errorString:str, advancedOrderRejectJson = ""):
@@ -42,18 +47,17 @@ class ibProcessor(threading.Thread):
         else: 
             logger.error("ERROR %s %s %s", reqId, errorCode, errorString)
 
-    # determine which decoder (and thereby which wrapper) to use
-    #def choose_decoder(self, fields, decoder_list):
-    #    return decoder_list[0]
-
     # This run function to be used for the thread target is adapted from the original ib api eEClient run method
     def run(self):
+        logger.debug("processor thread: thread starting")
         self.unset_stop_event()
+        time1_ = time.perf_counter()
+
         try:
             while not self.stop_event.is_set(): # or not self.in_queue.empty():
                 try:
                     try:
-                        message = self.in_queue.get(block=True, timeout=0.01)
+                        message = self.in_queue.get(block=False, timeout=0.1)
                         if len(message) > MAX_MSG_LEN:
                             logger.error("processor thread: bad message length")
                             self.error(NO_VALID_ID, BAD_LENGTH.code(), "%s:%d:%s" % (BAD_LENGTH.msg(), len(message), message))
@@ -62,13 +66,10 @@ class ibProcessor(threading.Thread):
                             self.ib_connection.disconnect()
                             break
                     except queue.Empty:
-                        #print("processor thread: in-queue is empty")
-                        #logger.debug("queue.get: empty")
-                        pass
+                        logger.debug("in_queue empty")
                     else:
                         fields = ibcomm.read_fields(message)
-                        logger.info("fields %s", fields)
-                        # 
+                        #logger.info("fields %s", fields)
                         # this starts execution chain that ends up at wrapper handler functions
                         self.decoder.interpret(fields)    
 
@@ -78,9 +79,12 @@ class ibProcessor(threading.Thread):
                     self.set_stop_event()
                     self.ib_connection.disconnect()
 
-                #print("processor thread: connection: ", self.ib_connection.ib_is_connected(), " queue size: ", self.in_queue.qsize())
-                if self.in_queue.qsize() > 0:
-                    logger.info("conn:%d queue.sz:%d", self.ib_connection.isConnected(), self.in_queue.qsize())
+                if self.in_queue.qsize() > 1000:
+                    time2_ = time.perf_counter()
+                    if time2_ - time1_ > 1.0:
+                        logger.warning("conn:%d queue.sz:%d", self.ib_connection.isConnected(), self.in_queue.qsize())
+                        print("WARNING --- Queue size > 1000 --- queue.qsize= %d", self.in_queue.qsize())
+                        time1_ = time2_
         finally:
             if self.stop_event.is_set() == True:
                 logger.info("processor thread: thread stopped")
@@ -91,14 +95,14 @@ class ibProcessor(threading.Thread):
     def set_stop_event(self):
         if self.stop_event.is_set() == False:
             self.stop_event.set()
-            logger.info("processor thread: stop event set")
+            logger.debug("processor thread: stop event set")
         # else:
         #     logger.info("processor thread: stop event already set")
 
     def unset_stop_event(self):
         if self.stop_event.is_set() == True:
             self.stop_event.clear()
-            logger.info("processor thread: stop event cleared")
+            logger.debug("processor thread: stop event cleared")
         # else:
         #     logger.info("processor thread: stop event already cleared")
 

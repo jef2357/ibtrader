@@ -1,0 +1,36 @@
+
+CREATE TABLE IF NOT EXISTS tick_generic (
+    reqid INT,
+    recev_time TIMESTAMP WITHOUT TIME ZONE,
+    field INT,
+    name TEXT,
+    value DOUBLE
+
+
+CREATE TABLE IF NOT EXISTS tick_price (
+  reqid INT,
+  recev_time TIMESTAMP WITHOUT TIME ZONE,
+  field INT,
+  name TEXT, 
+  price NUMERIC, 
+  attributes TEXT
+)
+
+CREATE TABLE IF NOT EXISTS tick_size (
+    id BIGSERIAL PRIMARY KEY, 
+    reqid INT,
+    recev_time BIGINT,
+    field INT,
+    name TEXT,
+    size INT
+)
+
+CREATE TABLE IF NOT EXISTS tick_string (
+    id BIGSERIAL PRIMARY KEY, 
+    reqid INT,
+    recev_time BIGINT,
+    field INT,
+    name TEXT,
+    string TEXT
+)
+
