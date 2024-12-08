@@ -11,8 +11,8 @@ class ibDBConn(threading.Thread):
     def __init__(self, config) -> None:
           super().__init__(name= 'db')
           self.db_config= config
-          self.db_connect()
-          self.db_setup()
+          self._db_connect()
+          self._db_setup()
           self.db_lock= threading.Lock()
           self.stop_event= threading.Event()
           self.db_last_write= time.perf_counter()
@@ -23,7 +23,7 @@ class ibDBConn(threading.Thread):
           self.tick_size_queue= queue.Queue()
           self.tick_string_queue= queue.Queue()
 
-    def db_connect(self):
+    def _db_connect(self) -> None:
         try:
             self.db_conn = psycopg.connect(**self.db_config)
             self.db_cur = self.db_conn.cursor()
@@ -33,36 +33,29 @@ class ibDBConn(threading.Thread):
             print(err)
             exit(1)
 
-    def run(self):
+    def run(self) -> None:
         logger.debug("database thread: thread starting")
         self.stop_event.clear()
         _commands = []
         _cnt = 0
-        time1_ = time.perf_counter()
         self.unset_stop_event()
         try:
             while not self.stop_event.is_set():
-                #TODO: add time check to ensure that db_insert does not take more than 1 sec
-                time.sleep(1)
-                _cnt= _cnt + 1
-                if _cnt == 5:
-                   pass
-                print("queue sizes - reqid:",self.reqid_list_queue.qsize(),
-                      "tbt:", self.tbt_all_last_queue.qsize(),
-                      "generic:", self.tick_generic_queue.qsize(),
-                      "price:", self.tick_price_queue.qsize(),
-                      "size:", self.tick_size_queue.qsize(),
-                      "string:", self.tick_string_queue.qsize()
-                )
-                timer1_ = time.perf_counter()
-                self.reqid_list_copy()
-                self.tbt_all_last_copy()
-                self.tick_generic_copy()
-                self.tick_price_copy()
-                self.tick_size_copy()
-                self.tick_string_copy()
-                timer2_ = time.perf_counter()
-                print("    writing to db required ",timer2_-timer1_, " seconds" )
+                time.sleep(1)    # writing to db every 1 second (time.sleep() call waits for 1 second)
+                # print("queue sizes - reqid:",self.reqid_list_queue.qsize(),
+                #       "tbt:", self.tbt_all_last_queue.qsize(),
+                #       "generic:", self.tick_generic_queue.qsize(),
+                #       "price:", self.tick_price_queue.qsize(),
+                #       "size:", self.tick_size_queue.qsize(),
+                #       "string:", self.tick_string_queue.qsize()
+                #       )
+                #TODO: measure time it takes to write to db
+                #_timer1_ = time.perf_counter()
+                self.write_all()        
+                #_timer2_ = time.perf_counter()
+                # if _timer2_ - _timer1_ > .1:
+                #     logger.warning("database thread: writing to database required %s seconds", str(_timer2_ - _timer1_))    
+                #     print("database thread: writing to database required %s seconds", str(_timer2_ - _timer1_))
         except:
             logger.error("databse thread: undhandled exception in database thread")
             self.set_stop_event()
@@ -73,7 +66,7 @@ class ibDBConn(threading.Thread):
                 self.set_stop_event()
                 logger.info("database thread: thread stopped")
 
-    def enqueue(self, table:str, cmd:str, var):
+    def enqueue(self, table:str, cmd:str, var) -> None:
         match table:
             case "reqid_list":
                 self.reqid_list_queue.put((var))
@@ -87,6 +80,14 @@ class ibDBConn(threading.Thread):
                 self.tick_size_queue.put((var))
             case "tick_string":
                 self.tick_string_queue.put((var))
+
+    def write_all(self) -> None:
+        self.reqid_list_copy()
+        self.tbt_all_last_copy()
+        self.tick_generic_copy()
+        self.tick_price_copy()
+        self.tick_size_copy()
+        self.tick_string_copy()
 
     def test(self):
         pass
@@ -107,7 +108,7 @@ class ibDBConn(threading.Thread):
         #     for _row in _data:
         #         copy.write_row(_row)
 
-    def reqid_list_copy(self):
+    def reqid_list_copy(self) -> None:
         if self.reqid_list_queue.qsize() > 0:
             _values = []
             while not self.reqid_list_queue.empty():
@@ -117,7 +118,7 @@ class ibDBConn(threading.Thread):
                 for _row in _values:
                     copy.write_row(_row)
 
-    def tbt_all_last_copy(self):
+    def tbt_all_last_copy(self) -> None:
         if self.tbt_all_last_queue.qsize() > 0:
             _values = []
             while not self.tbt_all_last_queue.empty():
@@ -127,7 +128,7 @@ class ibDBConn(threading.Thread):
                 for _row in _values:
                     copy.write_row(_row)
 
-    def tick_generic_copy(self):
+    def tick_generic_copy(self) -> None:
         if self.tick_generic_queue.qsize() > 0:
             _values = []
             while not self.tick_generic_queue.empty():
@@ -137,7 +138,7 @@ class ibDBConn(threading.Thread):
                 for _row in _values:
                     copy.write_row(_row)
 
-    def tick_price_copy(self):
+    def tick_price_copy(self) -> None:
         if self.tick_price_queue.qsize() > 0:
             _values = []
             while not self.tick_price_queue.empty():
@@ -147,7 +148,7 @@ class ibDBConn(threading.Thread):
                 for _row in _values:
                     copy.write_row(_row)
     
-    def tick_size_copy(self):
+    def tick_size_copy(self) -> None:
         if self.tick_size_queue.qsize() > 0:
             _values = []
             while not self.tick_size_queue.empty():
@@ -157,7 +158,7 @@ class ibDBConn(threading.Thread):
                 for _row in _values:
                     copy.write_row(_row)
 
-    def tick_string_copy(self):
+    def tick_string_copy(self) -> None:
         if self.tick_string_queue.qsize() > 0:
             _values = []
             while not self.tick_string_queue.empty():
@@ -167,103 +168,107 @@ class ibDBConn(threading.Thread):
                 for _row in _values:
                     copy.write_row(_row)
 
-        #     args_str = ','.join(cur.mogrify("(%s,%s,%s,%s,%s,%s,%s,%s,%s)", x) for x in tup)
-        #     cur.execute("INSERT INTO table VALUES " + args_str)
-
-        #     sql.SQL()
- 
-        #     # cursor.mogrify() to insert multiple values
-        #     _args = ','.join(self.db_cur.mogrify("(%s,%s,%s,%s,%s,%s,%s)", i).decode('utf-8') for i in _values)
-        
-        # # executing the sql statement
-        # self.db_cur.execute("INSERT INTO tick_price VALUES " + (_args))
-
-        
-
-    def set_stop_event(self):
+    def set_stop_event(self) -> None:
         if self.stop_event.is_set() == False:
             self.stop_event.set()
             logger.debug("sender thread: stop event set")
 
-    def unset_stop_event(self):
+    def unset_stop_event(self) -> None:
         if self.stop_event.is_set() == True:
             self.stop_event.clear()
             logger.debug("sender thread: stop event cleared")
 
-    def db_setup(self):
+
+
+    def _db_setup(self) -> None:
         pass
-        # create_tick_generic_table = """
-        #     CREATE TABLE IF NOT EXISTS tick_generic (
-        #         source TEXT,
-        #         reqid INT,
-        #         recv_time TIMESTAMP WITHOUT TIME ZONE,
-        #         field INT,
-        #         name TEXT,
-        #         value NUMERIC
-        #     )"""
-        # self.db_cur.execute(create_tick_generic_table)
+        create_tick_generic_table = """
+            CREATE TABLE IF NOT EXISTS tick_generic (
+                source TEXT,
+                reqid INT,
+                recv_time TIMESTAMP WITHOUT TIME ZONE,
+                field INT,
+                name TEXT,
+                value NUMERIC
+            )"""
+        self.db_cur.execute(create_tick_generic_table)
 
-        # create_tick_price_table = """
-        #     CREATE TABLE IF NOT EXISTS tick_price (
-        #         source TEXT,
-        #         reqid INT,
-        #         recv_time TIMESTAMP WITHOUT TIME ZONE,
-        #         field INT,
-        #         name TEXT, 
-        #         price NUMERIC, 
-        #         attributes TEXT
-        #     )"""
-        # self.db_cur.execute(create_tick_price_table)
+        create_tick_price_table = """
+            CREATE TABLE IF NOT EXISTS tick_price (
+                source TEXT,
+                reqid INT,
+                recv_time TIMESTAMP WITHOUT TIME ZONE,
+                field INT,
+                name TEXT, 
+                price NUMERIC, 
+                attributes TEXT
+            )"""
+        self.db_cur.execute(create_tick_price_table)
 
-        # create_tick_size_table = """
-        #     CREATE TABLE IF NOT EXISTS tick_size (
-        #         source TEXT,
-        #         reqid INT,
-        #         recv_time TIMESTAMP WITHOUT TIME ZONE,
-        #         field INT,
-        #         name TEXT,
-        #         size NUMERIC
-        #     )"""
-        # self.db_cur.execute(create_tick_size_table)
+        create_tick_size_table = """
+            CREATE TABLE IF NOT EXISTS tick_size (
+                source TEXT,
+                reqid INT,
+                recv_time TIMESTAMP WITHOUT TIME ZONE,
+                field INT,
+                name TEXT,
+                size NUMERIC
+            )"""
+        self.db_cur.execute(create_tick_size_table)
 
-        # create_tick_string_table = """
-        #     CREATE TABLE IF NOT EXISTS tick_string (
-        #         source TEXT,
-        #         reqid INT,
-        #         recv_time TIMESTAMP WITHOUT TIME ZONE,
-        #         field INT,
-        #         name TEXT,
-        #         string TEXT
-        #     )"""
-        # self.db_cur.execute(create_tick_string_table)
+        create_tick_string_table = """
+            CREATE TABLE IF NOT EXISTS tick_string (
+                source TEXT,
+                reqid INT,
+                recv_time TIMESTAMP WITHOUT TIME ZONE,
+                field INT,
+                name TEXT,
+                string TEXT
+            )"""
+        self.db_cur.execute(create_tick_string_table)
 
-        # create_reqid_list_table = """
-        #     CREATE TABLE IF NOT EXISTS reqid_list (
-        #         source TEXT,
-        #         reqid INT,
-        #         send_time TIMESTAMP WITHOUT TIME ZONE,
-        #         req_func TEXT,
-        #         symbol TEXT,
-        #         security_type TEXT,
-        #         exchange TEXT,
-        #         currency TEXT
-        #     )"""
-        # self.db_cur.execute(create_reqid_list_table)
+        create_reqid_list_table = """
+            CREATE TABLE IF NOT EXISTS reqid_list (
+                source TEXT,
+                reqid INT,
+                send_time TIMESTAMP WITHOUT TIME ZONE,
+                req_func TEXT,
+                symbol TEXT,
+                security_type TEXT,
+                exchange TEXT,
+                currency TEXT
+            )"""
+        self.db_cur.execute(create_reqid_list_table)
 
-        # create_tick_by_tick_all_last_table = """
-        #     CREATE TABLE IF NOT EXISTS tbt_all_last (
-        #         source TEXT,
-        #         reqid INT,
-        #         recv_time TIMESTAMP WITHOUT TIME ZONE,
-        #         tick_type INT,
-        #         tick_name TEXT,
-        #         ib_time INT,
-        #         price NUMERIC,
-        #         size NUMERIC,
-        #         exchange TEXT,
-        #         spec_cond TEXT,
-        #         past_limit TEXT,
-        #         unreported TEXT
-        #     )"""
-        # self.db_cur.execute((create_tick_by_tick_all_last_table))
+        create_tick_by_tick_all_last_table = """
+            CREATE TABLE IF NOT EXISTS tbt_all_last (
+                source TEXT,
+                reqid INT,
+                recv_time TIMESTAMP WITHOUT TIME ZONE,
+                tick_type INT,
+                tick_name TEXT,
+                ib_time INT,
+                price NUMERIC,
+                size NUMERIC,
+                exchange TEXT,
+                spec_cond TEXT,
+                past_limit TEXT,
+                unreported TEXT
+            )"""
+        self.db_cur.execute((create_tick_by_tick_all_last_table))
+
+        create_real_time_bars = """
+            CREATE TABLE IF NOT EXISTS rtb (
+                source TEXT,
+                reqid INT,
+                recv_time TIMESTAMP WITHOUT TIME ZONE,
+                open NUMERIC,
+                high NUMERIC,
+                low NUMERIC,
+                close NUMERIC,
+                volume NUMERIC,
+                wap NUMERIC,
+                count INT
+            )"""
+        self.db_cur.execute((create_real_time_bars))
 

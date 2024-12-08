@@ -1,0 +1,13 @@
+TODO:
+when plotting:
+    data cleaning:
+        find ranges with continuous streaming data - look for gaps in data > 1s
+        look for burst or catch up data - more than one data point with the same app timestamp
+            maybe need to compare the API timestamp to the recv_time timestamp, even though the APO timestamp does not have sub-1 sec resolution
+
+Qt and threads?
+
+QT logger display (bookmark)
+
+
+

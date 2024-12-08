@@ -9,7 +9,7 @@ from common.ibclient import ibClient
 from common.ibwrapper import ibWrapper
 
 
-def SetupLogger():
+def SetupLogger(log_level):
     if not os.path.exists("log"):
         os.makedirs("log")
 
@@ -23,11 +23,11 @@ def SetupLogger():
     #                    format=recfmt, datefmt=timefmt)
     logging.basicConfig(filename=time.strftime("log/pyibapi.%y%m%d_%H%M%S.log"),
                         filemode="w",
-                        level=logging.WARNING,
+                        level=log_level,
                         format=recfmt, datefmt=timefmt)
     logger = logging.getLogger()
     console = logging.StreamHandler()
-    console.setLevel(logging.WARNING)
+    console.setLevel(log_level)
     #logger.addHandler(console)
 
 
@@ -38,7 +38,8 @@ class ibTrader(ibClient, ibWrapper):
 
 
 def main():
-    SetupLogger()
+    log_level = logging.WARNING
+    SetupLogger(log_level)
     logger = logging.getLogger()
     #logger.info("INFO test logger message")
     
@@ -81,8 +82,8 @@ def main():
     trader.reqContractDetails(201, contract_AMD)
     trader.reqMktData(202, contract_AMD, '', False, False, '')
     trader.reqTickByTickData(203, contract_AMD, 'AllLast', 0, False)
-    #trader.reqMktDepth(404, con3, 10, True, [])
-    #trader.reqRealTimeBars(405, con3, 5, "TRADES", True, [])
+    #trader.reqMktDepth(404, contract_AMD, 10, True, [])
+    #trader.reqRealTimeBars(405, contract_AMD, 5, "TRADES", True, [])
 
     contract_NVDA = Contract()
     contract_NVDA.symbol = "NVDA"
@@ -190,7 +191,63 @@ def main():
     contract_AVGO.currency = "USD"
     trader.reqContractDetails(1201, contract_AVGO)
     trader.reqMktData(1202, contract_AVGO, '', False, False, '')
-    trader.reqTickByTickData(1203, contract_AVGO, 'AllLast', 0, False)
+    #trader.reqTickByTickData(1203, contract_AVGO, 'AllLast', 0, False)
+    #trader.reqMktDepth(404, con3, 10, True, [])
+    #trader.reqRealTimeBars(405, con3, 5, "TRADES", True, [])
+
+    contract_AAPL = Contract()
+    contract_AAPL.symbol = "AAPL"
+    contract_AAPL.secType = "STK"
+    contract_AAPL.exchange = "SMART"
+    contract_AAPL.currency = "USD"
+    trader.reqContractDetails(1301, contract_AAPL)
+    trader.reqMktData(1302, contract_AAPL, '', False, False, '')
+    #trader.reqTickByTickData(1303, contract_AAPL, 'AllLast', 0, False)
+    #trader.reqMktDepth(404, con3, 10, True, [])
+    #trader.reqRealTimeBars(405, con3, 5, "TRADES", True, [])
+
+    contract_SPY = Contract()
+    contract_SPY.symbol = "SPY"
+    contract_SPY.secType = "STK"
+    contract_SPY.exchange = "SMART"
+    contract_SPY.currency = "USD"
+    trader.reqContractDetails(1401, contract_SPY)
+    trader.reqMktData(1402, contract_SPY, '', False, False, '')
+    #trader.reqTickByTickData(703, contract_AMZN, 'AllLast', 0, False)
+    #trader.reqMktDepth(404, conl3, 10, True, [])
+    #trader.reqRealTimeBars(405, con3, 5, "TRADES", True, [])
+
+    contract_PANW = Contract()
+    contract_PANW.symbol = "PANW"
+    contract_PANW.secType = "STK"
+    contract_PANW.exchange = "SMART"
+    contract_PANW.currency = "USD"
+    trader.reqContractDetails(1501, contract_PANW)
+    trader.reqMktData(1502, contract_PANW, '', False, False, '')
+    #trader.reqTickByTickData(1303, contract_AAPL, 'AllLast', 0, False)
+    #trader.reqMktDepth(404, con3, 10, True, [])
+    #trader.reqRealTimeBars(405, con3, 5, "TRADES", True, [])
+
+    contract_LLY = Contract()
+    contract_LLY.symbol = "LLY"
+    contract_LLY.secType = "STK"
+    contract_LLY.exchange = "SMART"
+    contract_LLY.currency = "USD"
+    trader.reqContractDetails(1601, contract_LLY)
+    trader.reqMktData(1602, contract_LLY, '', False, False, '')
+    #trader.reqTickByTickData(1303, contract_AAPL, 'AllLast', 0, False)
+    #trader.reqMktDepth(404, con3, 10, True, [])
+    #trader.reqRealTimeBars(405, con3, 5, "TRADES", True, [])
+
+
+    contract_SMCI = Contract()
+    contract_SMCI.symbol = "SMCI"
+    contract_SMCI.secType = "STK"
+    contract_SMCI.exchange = "SMART"
+    contract_SMCI.currency = "USD"
+    trader.reqContractDetails(1701, contract_SMCI)
+    trader.reqMktData(1702, contract_SMCI, '', False, False, '')
+    #trader.reqTickByTickData(1303, contract_AAPL, 'AllLast', 0, False)
     #trader.reqMktDepth(404, con3, 10, True, [])
     #trader.reqRealTimeBars(405, con3, 5, "TRADES", True, [])
 

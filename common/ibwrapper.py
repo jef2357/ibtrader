@@ -93,14 +93,14 @@ class ibWrapper(EWrapper):
         time_now = datetime.now().isoformat()
         tick_name = TickTypeEnum.idx2name[tickType]
 
-        # if self.verbose is True:
-        #     self.logAnswer(current_fn_name(), vars())
-        #     print("<tickGeneric>",
-        #         " Time recvd: ", datetime.now().isoformat(),
-        #         " ReqId:", reqId,
-        #         " tickType:", TickTypeEnum.idx2name[tickType],
-        #         " value:", value
-        #     )
+        if self.verbose is True:
+            self.logAnswer(current_fn_name(), vars())
+            print("<tickGeneric>",
+                " Time recvd: ", datetime.now().isoformat(),
+                " ReqId:", reqId,
+                " tickType:", TickTypeEnum.idx2name[tickType],
+                " value:", value
+            )
         
         # self.wrapper_db.db_cur.execute(
         #     "INSERT INTO tick_generic (source, reqid, recv_time, field, name, value) VALUES (%s, %s, %s, %s, %s, %s)",
@@ -118,15 +118,15 @@ class ibWrapper(EWrapper):
         time_now = datetime.now().isoformat()
         tick_name = TickTypeEnum.idx2name[tickType]
 
-        # if self.verbose is True:
-        #     self.logAnswer(current_fn_name(), vars())
-        #     print("<tickPrice>",
-        #         " Time recvd:", time_now,
-        #         " reqId:", reqId,
-        #         " tickType:", tick_name,
-        #         " price: ", price,
-        #         " attrib:", attrib
-        #     )
+        if self.verbose is True:
+            self.logAnswer(current_fn_name(), vars())
+            print("<tickPrice>",
+                " Time recvd:", time_now,
+                " reqId:", reqId,
+                " tickType:", tick_name,
+                " price: ", price,
+                " attrib:", attrib
+            )
 
         # self.wrapper_db.db_cur.execute(
         #     "INSERT INTO tick_price (source, reqid, recv_time, field, name, price, attributes) VALUES (%s, %s, %s, %s, %s, %s, %s)",

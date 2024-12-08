@@ -75,8 +75,9 @@ class ibClient(EClient):
 
         self.client_reqid_log = {}
 
-    # def setConnState(self, connState) --- EClient function
+    #def setConnState(self, connState) --- EClient function
 
+    # New function
     def client_db_setup(self, config):
         self.client_db = ibDBConn(config)
 
@@ -93,16 +94,15 @@ class ibClient(EClient):
                     message_queued = True
                 except:
                     logger.error("Error writing to the output queue")
-                    #return False
                 finally:
                     if message_queued:
                         logger.info("%s %s %s %s", "QUEUED (out) sendMsg(): ", full_msg, " out_queue Size: ", str(self.out_queue.qsize()))
                     else:
                         logger.error("Error putting message in out_queue")
-                        #return True
         else:
             logger.error("Tried sending message while not connected to IB API")
-            #return False
+
+    #def logRequest(self, fnName, fnParams): --- EClient function
 
     @overloaded
     def startApi(self):
@@ -271,6 +271,11 @@ class ibClient(EClient):
             self.wrapper.connectionClosed()
             self.setConnState(EClient.DISCONNECTED)
             self.reset()
+    
+    #def isConnected(self): --- EClient function
+    #def keyboardInterrupt(self): --- EClient function
+    #def keyboardInterruptHard(self): --- EClient function
+    #def setConectionOptions(self, options): --- EClient function
 
     @overloaded
     def run(self):

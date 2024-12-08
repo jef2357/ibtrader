@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1233</width>
+    <height>994</height>
+   </rect>
+  </property>
+  <property name="font">
+   <font>
+    <pointsize>10</pointsize>
+   </font>
+  </property>
+  <property name="windowTitle">
+   <string>IB Trader</string>
+  </property>
+  <property name="tabShape">
+   <enum>QTabWidget::TabShape::Rounded</enum>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex">
+       <number>-1</number>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1233</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>File</string>
+    </property>
+    <addaction name="actionQuit"/>
+   </widget>
+   <addaction name="menuFile"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar">
+   <property name="sizePolicy">
+    <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+     <horstretch>0</horstretch>
+     <verstretch>0</verstretch>
+    </sizepolicy>
+   </property>
+   <property name="minimumSize">
+    <size>
+     <width>0</width>
+     <height>36</height>
+    </size>
+   </property>
+  </widget>
+  <widget class="QToolBar" name="toolBar">
+   <property name="minimumSize">
+    <size>
+     <width>0</width>
+     <height>48</height>
+    </size>
+   </property>
+   <property name="windowTitle">
+    <string>toolBar</string>
+   </property>
+   <property name="movable">
+    <bool>false</bool>
+   </property>
+   <property name="toolButtonStyle">
+    <enum>Qt::ToolButtonStyle::ToolButtonIconOnly</enum>
+   </property>
+   <property name="floatable">
+    <bool>true</bool>
+   </property>
+   <attribute name="toolBarArea">
+    <enum>TopToolBarArea</enum>
+   </attribute>
+   <attribute name="toolBarBreak">
+    <bool>false</bool>
+   </attribute>
+   <addaction name="actionConnect"/>
+   <addaction name="actionShutdown"/>
+   <addaction name="separator"/>
+   <addaction name="action_account"/>
+   <addaction name="action_symbols"/>
+   <addaction name="action_Historical"/>
+   <addaction name="action_Real_Time"/>
+   <addaction name="action_Scanner"/>
+   <addaction name="action_Strategy"/>
+  </widget>
+  <action name="actionQuit">
+   <property name="text">
+    <string>Quit</string>
+   </property>
+  </action>
+  <action name="actionConnect">
+   <property name="text">
+    <string>Connect</string>
+   </property>
+   <property name="toolTip">
+    <string>Connect to IB</string>
+   </property>
+  </action>
+  <action name="actionShutdown">
+   <property name="text">
+    <string>Shutdown</string>
+   </property>
+   <property name="toolTip">
+    <string>Shutdown IB connection</string>
+   </property>
+  </action>
+  <action name="action_Historical">
+   <property name="text">
+    <string>+Historical</string>
+   </property>
+   <property name="toolTip">
+    <string>New Hiatorical Data Tab</string>
+   </property>
+  </action>
+  <action name="action_Real_Time">
+   <property name="text">
+    <string>+Real Time</string>
+   </property>
+   <property name="toolTip">
+    <string>New Real Time Streaiming Tab</string>
+   </property>
+  </action>
+  <action name="action_Scanner">
+   <property name="text">
+    <string>+Scanner</string>
+   </property>
+   <property name="toolTip">
+    <string>Ne Scanner Tab</string>
+   </property>
+  </action>
+  <action name="action_Strategy">
+   <property name="text">
+    <string>+Strategy</string>
+   </property>
+   <property name="toolTip">
+    <string>New Strategy Tab</string>
+   </property>
+  </action>
+  <action name="action_account">
+   <property name="text">
+    <string>+Account</string>
+   </property>
+   <property name="toolTip">
+    <string>Add Account tab</string>
+   </property>
+  </action>
+  <action name="action_symbols">
+   <property name="text">
+    <string>+Symbols</string>
+   </property>
+   <property name="toolTip">
+    <string>Add Symbol Search Tab</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
