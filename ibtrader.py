@@ -215,11 +215,11 @@ def main():
     trader.reqMktData(1402, contract_SPY, '', False, False, '')
     #trader.reqTickByTickData(703, contract_AMZN, 'AllLast', 0, False)
     #trader.reqMktDepth(404, conl3, 10, True, [])
-    #trader.reqRealTimeBars(405, con3, 5, "TRADES", True, [])
+    #trader.reqRealTimeBars(405, co n3, 5, "TRADES", True, [])
 
     contract_PANW = Contract()
     contract_PANW.symbol = "PANW"
-    contract_PANW.secType = "STK"
+    contract_PANW.secType = "STK"       
     contract_PANW.exchange = "SMART"
     contract_PANW.currency = "USD"
     trader.reqContractDetails(1501, contract_PANW)
@@ -251,6 +251,16 @@ def main():
     #trader.reqMktDepth(404, con3, 10, True, [])
     #trader.reqRealTimeBars(405, con3, 5, "TRADES", True, [])
 
+    contract_SMH = Contract()
+    contract_SMH.symbol = "SMH"
+    contract_SMH.secType = "STK"
+    contract_SMH.exchange = "SMART"
+    contract_SMH.currency = "USD"
+    trader.reqContractDetails(1801, contract_SMH)
+    trader.reqMktData(1802, contract_SMH, '', False, False, '')
+    #trader.reqTickByTickData(1303, contract_AAPL, 'AllLast', 0, False)
+    #trader.reqMktDepth(404, con3, 10, True, [])
+    #trader.reqRealTimeBars(405, con3, 5, "TRADES", True, [])
 
     key = input("Press \'q\' key to exit:")
     if key == "q":
