@@ -1,20 +1,24 @@
 import psycopg
-from psycopg import sql, ClientCursor
+#from psycopg import sql, ClientCursor
 import threading
 import time
+import datetime
 import queue
 import logging
 
+from spx_trader_db_commands import table_creation_commands
+
 logger = logging.getLogger(__name__)
 
-class ibDBConn(threading.Thread):
+class spxTraderDBConn(threading.Thread):
     def __init__(self, config) -> None:
           super().__init__(name= 'db')
           self.db_config= config
+          self.db_connected = False
           self._db_connect()
           self._db_setup()
           self.db_lock= threading.Lock()
-          self.stop_event= threading.Event()
+          self.stop_event= threading.Event()        
           self.db_last_write= time.perf_counter()
           self.reqid_list_queue= queue.Queue()
           self.tbt_all_last_queue= queue.Queue()
@@ -24,14 +28,80 @@ class ibDBConn(threading.Thread):
           self.tick_string_queue= queue.Queue()
 
     def _db_connect(self) -> None:
-        try:
-            self.db_conn = psycopg.connect(**self.db_config)
-            self.db_cur = self.db_conn.cursor()
-            #self.cl_cur = ClientCursor(self.db_cur)
+        if not self.db_connected:
+            try:
+                self.db_conn = psycopg.connect(**self.db_config)
+                self.db_cur = self.db_conn.cursor()
+            except psycopg.Error as err:
+                # print error to console? print error to message window in ui?
+                print(err)
+                exit(1)
+            else:
+                self.db_connected = True
+        else:
             pass
-        except psycopg.Error as err:
-            print(err)
-            exit(1)
+    
+    def _db_disconnect(self) -> None:
+        if self.db_connected:
+            self.db_conn.close()
+            self.db_connected = False
+        else:
+            pass
+
+    def _db_setup(self) -> None:
+        table_names, table_commands = table_creation_commands()
+    
+        today_db_name = "trader_" + datetime.date.today().strftime("%Y_%m_%d")
+
+        if not self.db_connected:
+            self._db_connect()
+        
+        # get list of all database names
+        self.db_cur.execute("SELECT datname from pg_database;")
+        db_list = self.db_cur.fetchall()
+
+        # if today's database does not exist yet, create it
+        if (today_db_name,) not in db_list:
+            self.db_cur.execute(f"CREATE DATABASE {today_db_name}")
+
+        # get currently connected db name
+        self.db_cur.execute("SELECT current_database();")
+        current_db_name = self.db_cur.fetchone()[0]
+
+        # if currently connected db is not today's db, close connection and reconnect to today's db
+        if current_db_name != today_db_name:
+            self._db_disconnect()
+            self.db_config['dbname'] = today_db_name
+            self._db_connect()
+
+        # connected to today's db, create tables
+        #     creation commands have "IF NOT EXISTS" so they will not be created if they already exist
+        for table_command in table_commands:
+            self.db_cur.execute(table_command)                                
+            # TODO: execute hyptertable customizations
+        
+        # TODO: get tables that are hypertables
+        # self.db_cur.execute("SELECT * FROM timescaledb_information.hypertables;")
+        # hypertables = self.db_cur.fetchall()
+        # hypertables_list = []
+        # for row in hypertables:
+        #     hypertables_list.append(row[1])
+
+
+        ########### this command to get the table names is not working
+        #
+        # self.db_cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';")
+        # exisitng_table_names = self.db_cur.fetchall()
+
+        # for table_name, table_command in zip(table_names, table_commands):
+        #     if table_name in exisitng_table_names:
+        #         pass
+        #     else:
+        #         self.db_cur.execute(table_command)                
+                
+        #         # TODO: execute hyptertable customizations
+
+
 
     def run(self) -> None:
         logger.debug("database thread: thread starting")
@@ -40,22 +110,24 @@ class ibDBConn(threading.Thread):
         _cnt = 0
         self.unset_stop_event()
         try:
+            _loop_timer1 = time.perf_counter()
             while not self.stop_event.is_set():
-                time.sleep(1)    # writing to db every 1 second (time.sleep() call waits for 1 second)
+                _loop_timer2 = time.perf_counter()
+                _loop_time = _loop_timer2 - _loop_timer1
+                if _loop_time < 1.0:
+                    time.sleep(1.0 - _loop_time)
+                else:
+                    logger.warning("database thread: writing to database required %s seconds", str(_loop_timer2 - _loop_timer1))    
+                    print("database thread: writing to database required %s seconds", str(_loop_timer2 - _loop_timer1))
+                # writing to db every 1 second (time.sleep() call waits for 1 second)
                 # print("queue sizes - reqid:",self.reqid_list_queue.qsize(),
                 #       "tbt:", self.tbt_all_last_queue.qsize(),
                 #       "generic:", self.tick_generic_queue.qsize(),
                 #       "price:", self.tick_price_queue.qsize(),
                 #       "size:", self.tick_size_queue.qsize(),
                 #       "string:", self.tick_string_queue.qsize()
-                #       )
-                #TODO: measure time it takes to write to db
-                #_timer1_ = time.perf_counter()
-                self.write_all()        
-                #_timer2_ = time.perf_counter()
-                # if _timer2_ - _timer1_ > .1:
-                #     logger.warning("database thread: writing to database required %s seconds", str(_timer2_ - _timer1_))    
-                #     print("database thread: writing to database required %s seconds", str(_timer2_ - _timer1_))
+                _loop_timer1 = time.perf_counter()
+                self.write_all()
         except:
             logger.error("databse thread: undhandled exception in database thread")
             self.set_stop_event()
@@ -89,7 +161,7 @@ class ibDBConn(threading.Thread):
         self.tick_size_copy()
         self.tick_string_copy()
 
-    def test(self):
+    def test(self) -> None:
         pass
         # _data = [("ib_api", 103, "2024-04-26 14:57:20.539164-05", 6, "HIGH", 5114.62, "CanAutoExecute: 0, PastLimit: 0, PreOpen: 0"),
         #          ("ib_api", 103, "2024-04-26 14:57:20.596737-05", 7, "LOW", 5073.14,"CanAutoExecute: 0, PastLimit: 0, PreOpen: 0"),
@@ -178,99 +250,6 @@ class ibDBConn(threading.Thread):
             self.stop_event.clear()
             logger.debug("sender thread: stop event cleared")
 
-
-
-    def _db_setup(self) -> None:
-        pass
-        create_tick_generic_table = """
-            CREATE TABLE IF NOT EXISTS tick_generic (
-                source TEXT,
-                reqid INT,
-                recv_time TIMESTAMP WITHOUT TIME ZONE,
-                field INT,
-                name TEXT,
-                value NUMERIC
-            )"""
-        self.db_cur.execute(create_tick_generic_table)
-
-        create_tick_price_table = """
-            CREATE TABLE IF NOT EXISTS tick_price (
-                source TEXT,
-                reqid INT,
-                recv_time TIMESTAMP WITHOUT TIME ZONE,
-                field INT,
-                name TEXT, 
-                price NUMERIC, 
-                attributes TEXT
-            )"""
-        self.db_cur.execute(create_tick_price_table)
-
-        create_tick_size_table = """
-            CREATE TABLE IF NOT EXISTS tick_size (
-                source TEXT,
-                reqid INT,
-                recv_time TIMESTAMP WITHOUT TIME ZONE,
-                field INT,
-                name TEXT,
-                size NUMERIC
-            )"""
-        self.db_cur.execute(create_tick_size_table)
-
-        create_tick_string_table = """
-            CREATE TABLE IF NOT EXISTS tick_string (
-                source TEXT,
-                reqid INT,
-                recv_time TIMESTAMP WITHOUT TIME ZONE,
-                field INT,
-                name TEXT,
-                string TEXT
-            )"""
-        self.db_cur.execute(create_tick_string_table)
-
-        create_reqid_list_table = """
-            CREATE TABLE IF NOT EXISTS reqid_list (
-                source TEXT,
-                reqid INT,
-                send_time TIMESTAMP WITHOUT TIME ZONE,
-                req_func TEXT,
-                symbol TEXT,
-                security_type TEXT,
-                exchange TEXT,
-                currency TEXT
-            )"""
-        self.db_cur.execute(create_reqid_list_table)
-
-        create_tick_by_tick_all_last_table = """
-            CREATE TABLE IF NOT EXISTS tbt_all_last (
-                source TEXT,
-                reqid INT,
-                recv_time TIMESTAMP WITHOUT TIME ZONE,
-                tick_type INT,
-                tick_name TEXT,
-                ib_time INT,
-                price NUMERIC,
-                size NUMERIC,
-                exchange TEXT,
-                spec_cond TEXT,
-                past_limit TEXT,
-                unreported TEXT
-            )"""
-        self.db_cur.execute((create_tick_by_tick_all_last_table))
-
-        create_real_time_bars = """
-            CREATE TABLE IF NOT EXISTS rtb (
-                source TEXT,
-                reqid INT,
-                recv_time TIMESTAMP WITHOUT TIME ZONE,
-                open NUMERIC,
-                high NUMERIC,
-                low NUMERIC,
-                close NUMERIC,
-                volume NUMERIC,
-                wap NUMERIC,
-                count INT
-            )"""
-        self.db_cur.execute((create_real_time_bars))
-
-        
+    
+                
 

@@ -1,0 +1,8 @@
+It looks like the reqid data reqeusts aren't being performed.  only the reqMktData reqid is in the db table
+
+need to go through first prniciples action following and handling for the different data reqeusts and logging of the requests in teh database, and printing the requests to console
+
+ibclient handling of the reqeusts
+ibwrapper handling and db writing
+
+

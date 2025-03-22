@@ -2,12 +2,13 @@ import logging
 import time
 import os
 import psycopg
+import sys
 
 from ibapi.contract import Contract
 
-from common.ibclient import ibClient
-from common.ibwrapper import ibWrapper
-
+from client_spx_trader import spxTraderClient
+from wrapper_spx_trader import spxTraderWrapper
+from database_spx_trader import spxTraderDBConn
 
 def SetupLogger(log_level):
     if not os.path.exists("log"):
@@ -31,10 +32,11 @@ def SetupLogger(log_level):
     #logger.addHandler(console)
 
 
-class ibTrader(ibClient, ibWrapper):
-    def __init__(self):
-        ibWrapper.__init__(self)
-        ibClient.__init__(self, wrapper=self)
+class spxTrader(spxTraderClient, spxTraderWrapper):
+    def __init__(self, db_config):
+        self.db_conn = spxTraderDBConn(db_config)
+        spxTraderWrapper.__init__(self, self.db_conn)
+        spxTraderClient.__init__(self, self, self.db_conn)
 
 
 def main():
@@ -44,7 +46,7 @@ def main():
     #logger.info("INFO test logger message")
     
     print("creating ibtrader object")
-    trader = ibTrader()
+    
 
     db_config = {'user':'jeffrey',
                   'password':'strawberries',
@@ -52,9 +54,8 @@ def main():
                   'port':'5432',
                   'dbname':'trader',
                   'autocommit':True} #this resolve the problem "InternalError: CREATE DATABASE cannot run inside a transaction block"
-        
-    trader.wrapper_db_setup(db_config)
-    trader.client_db_setup(db_config)
+
+    trader = spxTrader(db_config)
     
     print("connecting to ibapi")
     trader.connect("127.0.0.1", 7496, clientId=1)
@@ -66,7 +67,7 @@ def main():
     # TODO:
     #   use reqContractDetails to get contract object from the api
     # SPX ------------------------------------------------------------------------
-    request_data = True
+    request_data = False
     if request_data is True:
         contract_spx = Contract()
         contract_spx.symbol = "SPX"
@@ -84,7 +85,7 @@ def main():
         trader.reqContractDetails(99201, contract_AMD)
         trader.reqMktData(99202, contract_AMD, '', False, False, '')
         trader.reqTickByTickData(99203, contract_AMD, 'AllLast', 0, False)
-        trader.reqMktDepth(99404, contract_AMD, 10, True, [])
+        trader.reqMktDepth(99404, contract_AMD, 20, True, [])
         trader.reqRealTimeBars(99405, contract_AMD, 5, "TRADES", True, [])
 
         # contract_NVDA = Contract()

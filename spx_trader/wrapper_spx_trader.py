@@ -1,5 +1,4 @@
 import logging
-import psycopg
 import threading
 import time
 from datetime import datetime
@@ -16,16 +15,21 @@ from ibapi.commission_report import CommissionReport
 from ibapi.wrapper import EWrapper
 
 from common.ibcommon import overloaded
-from engine.ibdatabase import ibDBConn
+from database_spx_trader import spxTraderDBConn
 
-class ibWrapper(EWrapper):
-    def __init__(self):
+logger = logging.getLogger(__name__)
+
+
+class spxTraderWrapper(EWrapper):
+    def __init__(self, db_conn:spxTraderDBConn):
         EWrapper.__init__(self)
+        self.db_conn = db_conn
         self.verbose = False
+        self.next_valid_id = None
 
     # def logAnswer --- EWrapper method
-    def wrapper_db_setup(self, config):
-        self.wrapper_db = ibDBConn(config)
+    # def db_conn_setup(self, config):
+    #     self.db_conn = ibDBConn(config)
 
     @overloaded
     def error(self, reqId:TickerId, errorCode:int, errorString:str, advancedOrderRejectJson = ""):
@@ -34,21 +38,27 @@ class ibWrapper(EWrapper):
 
         if errorCode == -1:
             logger.info("info message from API %s %s %s", reqId, errorCode, errorString)
+            print("info message from API %s %s %s", reqId, errorCode, errorString)
         else:
             self.logAnswer(current_fn_name(), vars())
             if advancedOrderRejectJson:
                 logger.error("ERROR %s %s %s %s", reqId, errorCode, errorString, advancedOrderRejectJson)
             else: 
                 logger.error("ERROR %s %s %s", reqId, errorCode, errorString)
+            if errorCode == 502:
+                print("couldnt connect to TWS")
 
     #def winError --- EWrapper method
-
+    
     @overloaded
     def nextValidId(self, orderId:int):
         """ Receives next valid order id."""
 
         self.logAnswer(current_fn_name(), vars())
         print("Next valid order ID: ", orderId)
+
+        ### TODO
+        self.next_valid_id = orderId
 
     @overloaded
     def contractDetails(self, reqId:int, contractDetails:ContractDetails):
@@ -128,14 +138,14 @@ class ibWrapper(EWrapper):
                 " value:", value
             )
         
-        # self.wrapper_db.db_cur.execute(
+        # self.db_conn.db_cur.execute(
         #     "INSERT INTO tick_generic (source, reqid, recv_time, field, name, value) VALUES (%s, %s, %s, %s, %s, %s)",
         #     ("ib_api", reqId, time_now, tickType, tick_name, value)
         # )
 
         insert_str = "INSERT INTO tick_generic (source, reqid, recv_time, field, name, value) VALUES (%s, %s, %s, %s, %s, %s)"
         insert_var = ["ib_api", reqId, time_now, tickType, tick_name, value]
-        self.wrapper_db.enqueue("tick_generic", insert_str, insert_var)
+        self.db_conn.enqueue("tick_generic", insert_str, insert_var)
 
     @overloaded
     def tickPrice(self, reqId:TickerId , tickType:TickType, price:float,
@@ -154,14 +164,14 @@ class ibWrapper(EWrapper):
                 " attrib:", attrib
             )
 
-        # self.wrapper_db.db_cur.execute(
+        # self.db_conn.db_cur.execute(
         #     "INSERT INTO tick_price (source, reqid, recv_time, field, name, price, attributes) VALUES (%s, %s, %s, %s, %s, %s, %s)",
         #     ("ib_api", reqId, time_now, tickType, tick_name, price, str(attrib))
         # )
 
         insert_str = "INSERT INTO tick_price (source, reqid, recv_time, field, name, price, attributes) VALUES (%s, %s, %s, %s, %s, %s, %s)"
         insert_var = ["ib_api", reqId, time_now, tickType, tick_name, price, str(attrib)]
-        self.wrapper_db.enqueue("tick_price", insert_str, insert_var)
+        self.db_conn.enqueue("tick_price", insert_str, insert_var)
 
     @overloaded
     def tickSize(self, reqId:TickerId, tickType:TickType, size:Decimal):
@@ -178,14 +188,14 @@ class ibWrapper(EWrapper):
         #             " size:", size
         #     )
         
-        # self.wrapper_db.db_cur.execute(
+        # self.db_conn.db_cur.execute(
         #     "INSERT INTO tick_size (source, reqid, recv_time, field, name, size) VALUES (%s, %s, %s, %s, %s, %s)",
         #     ("ib_api", reqId, time_now, tickType, tick_name, size)
         # )
 
         insert_str = "INSERT INTO tick_size (source, reqid, recv_time, field, name, size) VALUES (%s, %s, %s, %s, %s, %s)"
         insert_var = ["ib_api", reqId, time_now, tickType, tick_name, size]
-        self.wrapper_db.enqueue("tick_size", insert_str, insert_var)
+        self.db_conn.enqueue("tick_size", insert_str, insert_var)
         
     @overloaded
     def tickString(self, reqId:TickerId, tickType:TickType, value:str):
@@ -201,14 +211,14 @@ class ibWrapper(EWrapper):
         #         " str: ", value
         #     )
         
-        # self.wrapper_db.db_cur.execute(
+        # self.db_conn.db_cur.execute(
         #     "INSERT INTO tick_string (source, reqid, recv_time, field, name, string) VALUES (%s, %s, %s, %s, %s, %s)",
         #     ("ib_api", reqId, time_now, tickType, tick_name, value)
         # )
 
         insert_str= "INSERT INTO tick_string (source, reqid, recv_time, field, name, string) VALUES (%s, %s, %s, %s, %s, %s)"
         insert_var= ["ib_api", reqId, time_now, tickType, tick_name, value]
-        self.wrapper_db.enqueue("tick_string", insert_str, insert_var)
+        self.db_conn.enqueue("tick_string", insert_str, insert_var)
 
     @overloaded
     def tickReqParams(self, tickerId:int, minTick:float, bboExchange:str, snapshotPermissions:int):
@@ -250,14 +260,14 @@ class ibWrapper(EWrapper):
         #       " Unreported:", tickAttribLast.unreported
         #     )
         
-        # self.wrapper_db.db_cur.execute(
+        # self.db_conn.db_cur.execute(
         #     "INSERT INTO tbt_all_last (source, reqid, recv_time, tick_type, tick_name, ib_time, price, size, exchange, spec_cond, past_limit, unreported) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
         #     ("ib_api", reqId, time_now, tickType, tick_name, time, price, size, exchange, specialConditions, tickAttribLast.pastLimit, tickAttribLast.unreported)
         # )
 
         insert_str= "INSERT INTO tbt_all_last (source, reqid, recv_time, tick_type, tick_name, ib_time, price, size, exchange, spec_cond, past_limit, unreported) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
         insert_var= ["ib_api", reqId, time_now, tickType, tick_name, time, price, size, exchange, specialConditions, tickAttribLast.pastLimit, tickAttribLast.unreported]
-        self.wrapper_db.enqueue("tbt_all_last", insert_str, insert_var)
+        self.db_conn.enqueue("tbt_all_last", insert_str, insert_var)
 
     @overloaded
     def historicalTicks(self, reqId: int, ticks: ListOfHistoricalTick, done: bool):
