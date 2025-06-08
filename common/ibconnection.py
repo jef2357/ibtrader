@@ -72,7 +72,7 @@ class ibConnection:
                     logger.error("No socket exists to close")
             except:
                 logger.error("Error closing socket")
-        logger.debug("ibconnection.disconnect() released connection lock")
+            logger.debug("ibconnection.disconnect() released connection lock")
 
     def isConnected(self):
         return self.socket is not None
@@ -104,7 +104,7 @@ class ibConnection:
                 logger.error("socket either closed or broken, disconnecting")
                 self.disconnect()
         except socket.timeout:
-            logger.error("socket timeout from recvMsg %s", sys.exc_info())
+            logger.info("socket timeout from recvMsg %s", sys.exc_info())
             buf = b""
         except socket.error:
             logger.error("socket broken, disconnecting")

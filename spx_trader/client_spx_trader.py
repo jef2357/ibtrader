@@ -26,7 +26,7 @@ from database_spx_trader import spxTraderDBConn
 logger = logging.getLogger(__name__)
 
 
-class spxTraderClient(EClient):
+class   spxTraderClient(EClient):
     (DISCONNECTED, CONNECTING, CONNECTED, REDIRECT) = range(4)
     
     def __init__(self, wrapper, db_conn:spxTraderDBConn):
@@ -57,14 +57,16 @@ class spxTraderClient(EClient):
         self.out_queue_lock = threading.Lock()
         self.print_lock = threading.Lock()
         self.client_lock = threading.Lock()
-        self.req_id_lock = threading.Lock()
-        self.in_queue = queue.PriorityQueue()
-        self.out_queue = queue.PriorityQueue()
+        
+        #TODO: investigate using priority queye for the in and out queues
+        self.in_queue = queue.Queue()
+        self.out_queue = queue.Queue()
 
-        self.reader = ibReader(self.conn, self.in_queue, self.in_queue_lock, self.print_lock)            
-        self.sender = ibSender(self.conn, self.out_queue, self.out_queue_lock, self.print_lock)
-        self.processor = ibProcessor(self.conn, self.in_queue, self.in_queue_lock, self.decoder, self.print_lock)
-
+        if self.host and self.port and self.clientId:
+            self.conn = ibConnection(self.host, self.port, self.conn_lock)
+            self.reader = ibReader(self.conn, self.in_queue, self.in_queue_lock, self.print_lock)            
+            self.sender = ibSender(self.conn, self.out_queue, self.out_queue_lock, self.print_lock)
+            self.processor = ibProcessor(self.conn, self.in_queue, self.in_queue_lock, self.decoder, self.print_lock)
 
     @overloaded
     def sendMsg(self, msg, client_func=None):
@@ -75,10 +77,7 @@ class spxTraderClient(EClient):
         if self.isConnected():
             with self.out_queue_lock:
                 try:
-                    if client_func == "reqIds":
-                        self.out_queue.put(1, full_msg, block=True, timeout=0.01)
-                    else:
-                        self.out_queue.put(3, full_msg, block=True, timeout=0.01)
+                    self.out_queue.put(full_msg, block=False, timeout=0.01)
                     message_queued = True
                 except:
                     logger.error("Error writing to the output queue")
@@ -157,7 +156,7 @@ class spxTraderClient(EClient):
 
             self.conn.connect()
             self.setConnState(EClient.CONNECTING)
-
+    
             v100prefix = "API\0"
             v100version = "v%d..%d" % (MIN_CLIENT_VER, MAX_CLIENT_VER)
 
@@ -207,6 +206,10 @@ class spxTraderClient(EClient):
             self.startApi()
             self.wrapper.connectAck()
 
+            self.reader = ibReader(self.conn, self.in_queue, self.in_queue_lock, self.print_lock)            
+            self.sender = ibSender(self.conn, self.out_queue, self.out_queue_lock, self.print_lock)
+            self.processor = ibProcessor(self.conn, self.in_queue, self.in_queue_lock, self.decoder, self.print_lock)
+            
             self.db_conn.start()
             self.processor.start()
             self.reader.start()
@@ -285,8 +288,8 @@ class spxTraderClient(EClient):
         #   get function name and log that into the database entry with the req id
         send_time = datetime.now().isoformat()
         self.db_conn.db_cur.execute(
-            "INSERT INTO reqid_list (source, send_time, req_func) VALUES (%s, %s, %s)",
-            ("ib_api", send_time, "reqIds")
+            "INSERT INTO reqid_list (source, send_time, caller_func, caller_id) VALUES (%s, %s, %s, %s)",
+            ("ib_api", send_time, "reqIds", OUT.REQ_IDS)
         )
 
     @overloaded
@@ -386,8 +389,8 @@ class spxTraderClient(EClient):
         #   get function name and log that into the database entry with the req id
         send_time = datetime.now().isoformat()
         self.db_conn.db_cur.execute(
-            "INSERT INTO reqid_list (source, reqid, send_time, req_func, symbol, security_type, exchange, currency) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            ("ib_api", reqId, send_time, "reqMktData", contract.symbol, contract.secType, contract.exchange, contract.currency)
+            "INSERT INTO reqid_list (source, reqid, send_time, caller_func, caller_id, symbol, security_type, exchange, currency) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            ("ib_api", reqId, send_time, "reqMktData", OUT.REQ_CONTRACT_DATA, contract.symbol, contract.secType, contract.exchange, contract.currency)
         )
 
     @overloaded
@@ -417,7 +420,8 @@ class spxTraderClient(EClient):
 
         self.logRequest(current_fn_name(), vars())
 
-        self.client_reqid_log[reqId] = contract
+        #TODO:  Is this implemented anywhere?
+        #self.client_reqid_log[reqId] = contract
 
 
         if not self.isConnected():
@@ -516,8 +520,8 @@ class spxTraderClient(EClient):
         #   get function name and log that into the database entry with the req id
         send_time = datetime.now().isoformat()
         self.db_conn.db_cur.execute(
-            "INSERT INTO reqid_list (source, reqid, send_time, req_func, symbol, security_type, exchange, currency) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            ("ib_api", reqId, send_time, "reqMktData", contract.symbol, contract.secType, contract.exchange, contract.currency)
+            "INSERT INTO reqid_list (source, reqid, send_time, caller_func, caller_id, symbol, security_type, exchange, currency) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            ("ib_api", reqId, send_time, "reqMktData", OUT.REQ_MKT_DATA, contract.symbol, contract.secType, contract.exchange, contract.currency)
         )
 
         pass
@@ -551,8 +555,8 @@ class spxTraderClient(EClient):
         #   get function name and log that into the database entry with the req id
         send_time = datetime.now().isoformat()
         self.db_conn.db_cur.execute(
-            "INSERT INTO reqid_list (source, reqid, send_time, req_func) VALUES (%s, %s, %s, %s)",
-            ("ib_api", reqId, send_time, "cancelMktData")
+            "INSERT INTO reqid_list (source, reqid, send_time, caller_func, caller_id) VALUES (%s, %s, %s, %s, %s)",
+            ("ib_api", reqId, send_time, "cancelMktData", OUT.CANCEL_MKT_DATA)
         )
 
     @overloaded
@@ -605,8 +609,8 @@ class spxTraderClient(EClient):
 
         send_time = datetime.now().isoformat()
         self.db_conn.db_cur.execute(
-            "INSERT INTO reqid_list (source, reqid, send_time, req_func, symbol, security_type, exchange, currency) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            ("ib_api", reqId, send_time, "reqTickByTickData", contract.symbol, contract.secType, contract.exchange, contract.currency)
+            "INSERT INTO reqid_list (source, reqid, send_time, caller_func, caller_id, symbol, security_type, exchange, currency) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            ("ib_api", reqId, send_time, "reqTickByTickData", OUT.REQ_TICK_BY_TICK_DATA, contract.symbol, contract.secType, contract.exchange, contract.currency)
         )
 
     @overloaded
@@ -629,10 +633,11 @@ class spxTraderClient(EClient):
 
         send_time = datetime.now().isoformat()
         self.db_conn.db_cur.execute(
-            "INSERT INTO reqid_list (source, reqid, send_time, req_func) VALUES (%s, %s, %s, %s)",
-            ("ib_api", reqId, send_time, "cancelTickByTickData")
+            "INSERT INTO reqid_list (source, reqid, send_time, caller_func, CALLER_ID) VALUES (%s, %s, %s, %s, %s)",
+            ("ib_api", reqId, send_time, "cancelTickByTickData", OUT.CANCEL_TICK_BY_TICK_DATA)
         )
 
+    @overloaded
     def reqRealTimeBars(self, reqId:TickerId, contract:Contract, barSize:int,
                         whatToShow:str, useRTH:bool,
                         realTimeBarsOptions:TagValueList):
@@ -721,11 +726,11 @@ class spxTraderClient(EClient):
         #   get function name and log that into the database entry with the req id
         send_time = datetime.now().isoformat()
         self.db_conn.db_cur.execute(
-            "INSERT INTO reqid_list (source, reqid, send_time, req_func, symbol, security_type, exchange, currency) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            ("ib_api", reqId, send_time, "reqRealTimeBars", contract.symbol, contract.secType, contract.exchange, contract.currency)
+            "INSERT INTO reqid_list (source, reqid, send_time, caller_func, caller_id, symbol, security_type, exchange, currency) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            ("ib_api", reqId, send_time, "reqRealTimeBars", OUT.REQ_REAL_TIME_BARS, contract.symbol, contract.secType, contract.exchange, contract.currency)
         )
 
-
+    @overloaded
     def cancelRealTimeBars(self, reqId:TickerId):
         """Call the cancelRealTimeBars() function to stop receiving real time bar results.
 
@@ -750,6 +755,185 @@ class spxTraderClient(EClient):
 
         send_time = datetime.now().isoformat()
         self.db_conn.db_cur.execute(
-            "INSERT INTO reqid_list (source, reqid, send_time, req_func) VALUES (%s, %s, %s, %s)",
-            ("ib_api", reqId, send_time, "cancelTickByTickData")
+            "INSERT INTO reqid_list (source, reqid, send_time, caller_func, caller_id) VALUES (%s, %s, %s, %s, %s)",
+            ("ib_api", reqId, send_time, "cancelTickByTickData", OUT.CANCEL_REAL_TIME_BARS)
         )
+
+    @overloaded
+    def reqAccountSummary(self, reqId:int, groupName:str, tags:str):
+        """Call this method to request and keep up to date the data that appears
+        on the TWS Account Window Summary tab. The data is returned by
+        accountSummary().
+
+        Note:   This request is designed for an FA managed account but can be
+        used for any multi-account structure.
+
+        reqId:int - The ID of the data request. Ensures that responses are matched
+            to requests If several requests are in process.
+        groupName:str - Set to All to returnrn account summary data for all
+            accounts, or set to a specific Advisor Account Group name that has
+            already been created in TWS Global Configuration.
+        tags:str - A comma-separated list of account tags.  Available tags are:
+            accountountType
+            NetLiquidation,
+            TotalCashValue - Total cash including futures pnl
+            SettledCash - For cash accounts, this is the same as
+            TotalCashValue
+            AccruedCash - Net accrued interest
+            BuyingPower - The maximum amount of marginable US stocks the
+                account can buy
+            EquityWithLoanValue - Cash + stocks + bonds + mutual funds
+            PreviousDayEquityWithLoanValue,
+            GrossPositionValue - The sum of the absolute value of all stock
+                and equity option positions
+            RegTEquity,
+            RegTMargin,
+            SMA - Special Memorandum Account
+            InitMarginReq,
+            MaintMarginReq,
+            AvailableFunds,
+            ExcessLiquidity,
+            Cushion - Excess liquidity as a percentage of net liquidation value
+            FullInitMarginReq,
+            FullMaintMarginReq,
+            FullAvailableFunds,
+            FullExcessLiquidity,
+            LookAheadNextChange - Time when look-ahead values take effect
+            LookAheadInitMarginReq,
+            LookAheadMaintMarginReq,
+            LookAheadAvailableFunds,
+            LookAheadExcessLiquidity,
+            HighestSeverity - A measure of how close the account is to liquidation
+            DayTradesRemaining - The Number of Open/Close trades a user
+                could put on before Pattern Day Trading is detected. A value of "-1"
+                means that the user can put on unlimited day trades.
+            Leverage - GrossPositionValue / NetLiquidation
+            $LEDGER - Single flag to relay all cash balance tags*, only in base
+                currency.
+            $LEDGER:CURRENCY - Single flag to relay all cash balance tags*, only in
+                the specified currency.
+            $LEDGER:ALL - Single flag to relay all cash balance tags* in all
+            currencies."""
+
+        self.logRequest(current_fn_name(), vars())
+
+        if not self.isConnected():
+            self.wrapper.error(NO_VALID_ID, NOT_CONNECTED.code(), NOT_CONNECTED.msg())
+            return
+
+        try:
+
+            VERSION = 1
+
+            msg = make_field(OUT.REQ_ACCOUNT_SUMMARY) \
+               + make_field(VERSION)   \
+               + make_field(reqId)     \
+               + make_field(groupName) \
+               + make_field(tags)
+
+        except ClientException as ex:
+            self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
+            return
+
+        self.sendMsg(msg)
+
+        send_time = datetime.now().isoformat()
+        self.db_conn.db_cur.execute(
+            "INSERT INTO reqid_list (source, reqid, send_time, caller_func, caller_id) VALUES (%s, %s, %s, %s, %s)",
+            ("ib_api", reqId, send_time, "reqAccountSummary", OUT.REQ_ACCOUNT_SUMMARY)
+        )
+
+    @overloaded
+    def cancelAccountSummary(self, reqId:int):
+        """Cancels the request for Account Window Summary tab data.
+
+        reqId:int - The ID of the data request being canceled."""
+
+        self.logRequest(current_fn_name(), vars())
+
+        if not self.isConnected():
+            self.wrapper.error(NO_VALID_ID, NOT_CONNECTED.code(), NOT_CONNECTED.msg())
+            return
+
+        VERSION = 1
+
+        msg = make_field(OUT.CANCEL_ACCOUNT_SUMMARY) \
+           + make_field(VERSION)   \
+           + make_field(reqId)
+
+        self.sendMsg(msg)
+
+        send_time = datetime.now().isoformat()
+        self.db_conn.db_cur.execute(
+            "INSERT INTO reqid_list (source, reqid, send_time, caller_func, caller_id) VALUES (%s, %s, %s, %s, %s)",
+            ("ib_api", reqId, send_time, "cancelAccountSummary", OUT.CANCEL_ACCOUNT_SUMMARY)
+        )
+
+    @overloaded
+    def reqPositions(self, reqId:int):
+        """Requests real-time position data for all accounts."""
+
+        self.logRequest(current_fn_name(), vars())
+
+        if not self.isConnected():
+            self.wrapper.error(NO_VALID_ID, NOT_CONNECTED.code(), NOT_CONNECTED.msg())
+            return
+
+        if self.serverVersion() < MIN_SERVER_VER_POSITIONS:
+            self.wrapper.error(NO_VALID_ID, UPDATE_TWS.code(), UPDATE_TWS.msg() +
+                    "  It does not support positions request.")
+            return
+
+        VERSION = 1
+
+        msg = make_field(OUT.REQ_POSITIONS) \
+           + make_field(VERSION)
+
+        self.sendMsg(msg)
+
+        send_time = datetime.now().isoformat()
+        self.db_conn.db_cur.execute(
+            "INSERT INTO reqid_list (source, reqid, send_time, caller_func, caller_id) VALUES (%s, %s, %s, %s, %s)",
+            ("ib_api", reqId, send_time, "reqAccountSummary", OUT.REQ_POSITIONS)
+        )
+
+    @overloaded
+    def reqSecDefOptParams(self, reqId:int, underlyingSymbol:str,
+                            futFopExchange:str, underlyingSecType:str,
+                            underlyingConId:int):
+        """Requests security definition option parameters for viewing a
+        contract's option chain reqId the ID chosen for the request
+        underlyingSymbol futFopExchange The exchange on which the returned
+        options are trading. Can be set to the empty string "" for all
+        exchanges. underlyingSecType The type of the underlying security,
+        i.e. STK underlyingConId the contract ID of the underlying security.
+        Response comes via EWrapper.securityDefinitionOptionParameter()"""
+
+        self.logRequest(current_fn_name(), vars())
+
+        if not self.isConnected():
+            self.wrapper.error(NO_VALID_ID, NOT_CONNECTED.code(), NOT_CONNECTED.msg())
+            return
+
+        if self.serverVersion() < MIN_SERVER_VER_SEC_DEF_OPT_PARAMS_REQ:
+            self.wrapper.error(NO_VALID_ID, UPDATE_TWS.code(), UPDATE_TWS.msg() +
+                    "  It does not support security definition option request.")
+            return
+
+        try:
+                
+            flds = []
+            flds += [make_field(OUT.REQ_SEC_DEF_OPT_PARAMS),
+                make_field(reqId),
+                make_field(underlyingSymbol),
+                make_field(futFopExchange),
+                make_field(underlyingSecType),
+                make_field(underlyingConId)]
+    
+            msg = "".join(flds)
+            
+        except ClientException as ex:
+            self.wrapper.error(reqId, ex.code, ex.msg + ex.text)
+            return
+            
+        self.sendMsg(msg)

@@ -3,13 +3,14 @@ import threading
 import time
 from datetime import datetime
 
-from ibapi.common import * # @UnusedWildImport
-from ibapi.utils import * # @UnusedWildImport
+from ibapi.common import * 
+from ibapi.utils import * 
+from ibapi.server_versions import * 
 from ibapi.contract import (Contract, ContractDetails, DeltaNeutralContract)
 from ibapi.order import Order
 from ibapi.order_state import OrderState
 from ibapi.execution import Execution
-from ibapi.ticktype import * # @UnusedWildImport
+from ibapi.ticktype import * 
 from ibapi.commission_report import CommissionReport
 
 from ibapi.wrapper import EWrapper
@@ -26,6 +27,10 @@ class spxTraderWrapper(EWrapper):
         self.db_conn = db_conn
         self.verbose = False
         self.next_valid_id = None
+        self.req_id_lock = threading.Lock()
+        self.positions_event = threading.Event()
+        self.positions_event.clear()
+        self.wrapper_events = {}
 
     # def logAnswer --- EWrapper method
     # def db_conn_setup(self, config):
@@ -55,16 +60,27 @@ class spxTraderWrapper(EWrapper):
         """ Receives next valid order id."""
 
         self.logAnswer(current_fn_name(), vars())
-        print("Next valid order ID: ", orderId)
+        #print("from wrapper.nextValidId --- Next valid order ID: ", orderId)
+        with self.req_id_lock:
+            self.next_valid_id = orderId
 
-        ### TODO
-        self.next_valid_id = orderId
+    def get_req_id(self) -> int:
+        """ Returns the next valid order ID."""
+        with self.req_id_lock:
+            if self.next_valid_id is None:
+                return None
+            else:
+                current_id = self.next_valid_id   
+                self.next_valid_id += 1
+                return current_id
 
     @overloaded
     def contractDetails(self, reqId:int, contractDetails:ContractDetails):
         """Receives the full contract's definitions. This method will return all
         contracts matching the requested via EEClientSocket::reqContractDetails.
         For example, one can obtain the whole option chain with it."""
+
+        time_now = datetime.now().isoformat()
 
         #TODO:
         # parse out the individual elements of the ContractDEtails object
@@ -73,6 +89,22 @@ class spxTraderWrapper(EWrapper):
         self.logAnswer(current_fn_name(), vars())
         #print("Contract Details for reqID ", reqId)
         #print(contractDetails)
+
+        conid = contractDetails.contract.conId
+        symbol = contractDetails.contract.symbol
+        sec_type = contractDetails.contract.secType
+        exchange = contractDetails.contract.exchange
+        primary_exchange = contractDetails.contract.primaryExchange
+        currency = contractDetails.contract.currency
+        last_trade_date_or_contract_month = contractDetails.contract.lastTradeDateOrContractMonth
+        strike = contractDetails.contract.strike
+        right_ = contractDetails.contract.right
+        trading_class = contractDetails.contract.tradingClass
+
+        insert_str= "INSERT INTO tbt_all_last (source, reqid, recv_time, conid, symbol, sec_type, exchange, primary_exchange, currency, last_trade_date_or_contract_month, strike, right_, trading_class) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        insert_var= ["ib_api", reqId, time_now, conid, symbol, sec_type, exchange, primary_exchange, currency, last_trade_date_or_contract_month, strike, right_, trading_class]
+        self.db_conn.enqueue("contract", insert_str, insert_var)
+        
     
     @overloaded
     def contractDetailsEnd(self, reqId:int):
@@ -85,6 +117,8 @@ class spxTraderWrapper(EWrapper):
         #    call is necessary
         self.logAnswer(current_fn_name(), vars())
         #print("ContractDetailsEnd for reqid ", reqId)
+
+        
 
     @overloaded
     def updateMktDepth(self, reqId:TickerId , position:int, operation:int,
@@ -129,19 +163,14 @@ class spxTraderWrapper(EWrapper):
         time_now = datetime.now().isoformat()
         tick_name = TickTypeEnum.idx2name[tickType]
 
-        if self.verbose is True:
-            self.logAnswer(current_fn_name(), vars())
-            print("<tickGeneric>",
-                " Time recvd: ", datetime.now().isoformat(),
-                " ReqId:", reqId,
-                " tickType:", TickTypeEnum.idx2name[tickType],
-                " value:", value
-            )
-        
-        # self.db_conn.db_cur.execute(
-        #     "INSERT INTO tick_generic (source, reqid, recv_time, field, name, value) VALUES (%s, %s, %s, %s, %s, %s)",
-        #     ("ib_api", reqId, time_now, tickType, tick_name, value)
-        # )
+        # if self.verbose is True:
+        #     self.logAnswer(current_fn_name(), vars())
+        #     print("<tickGeneric>",
+        #         " Time recvd: ", datetime.now().isoformat(),
+        #         " ReqId:", reqId,
+        #         " tickType:", TickTypeEnum.idx2name[tickType],
+        #         " value:", value
+        #     )
 
         insert_str = "INSERT INTO tick_generic (source, reqid, recv_time, field, name, value) VALUES (%s, %s, %s, %s, %s, %s)"
         insert_var = ["ib_api", reqId, time_now, tickType, tick_name, value]
@@ -154,20 +183,15 @@ class spxTraderWrapper(EWrapper):
         time_now = datetime.now().isoformat()
         tick_name = TickTypeEnum.idx2name[tickType]
 
-        if self.verbose is True:
-            self.logAnswer(current_fn_name(), vars())
-            print("<tickPrice>",
-                " Time recvd:", time_now,
-                " reqId:", reqId,
-                " tickType:", tick_name,
-                " price: ", price,
-                " attrib:", attrib
-            )
-
-        # self.db_conn.db_cur.execute(
-        #     "INSERT INTO tick_price (source, reqid, recv_time, field, name, price, attributes) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-        #     ("ib_api", reqId, time_now, tickType, tick_name, price, str(attrib))
-        # )
+        # if self.verbose is True:
+        #     self.logAnswer(current_fn_name(), vars())
+        #     print("<tickPrice>",
+        #         " Time recvd:", time_now,
+        #         " reqId:", reqId,
+        #         " tickType:", tick_name,
+        #         " price: ", price,
+        #         " attrib:", attrib
+        #     )
 
         insert_str = "INSERT INTO tick_price (source, reqid, recv_time, field, name, price, attributes) VALUES (%s, %s, %s, %s, %s, %s, %s)"
         insert_var = ["ib_api", reqId, time_now, tickType, tick_name, price, str(attrib)]
@@ -187,11 +211,6 @@ class spxTraderWrapper(EWrapper):
         #             " tickType", tick_name,
         #             " size:", size
         #     )
-        
-        # self.db_conn.db_cur.execute(
-        #     "INSERT INTO tick_size (source, reqid, recv_time, field, name, size) VALUES (%s, %s, %s, %s, %s, %s)",
-        #     ("ib_api", reqId, time_now, tickType, tick_name, size)
-        # )
 
         insert_str = "INSERT INTO tick_size (source, reqid, recv_time, field, name, size) VALUES (%s, %s, %s, %s, %s, %s)"
         insert_var = ["ib_api", reqId, time_now, tickType, tick_name, size]
@@ -210,26 +229,22 @@ class spxTraderWrapper(EWrapper):
         #         " tickType", TickTypeEnum.idx2name[tickType],
         #         " str: ", value
         #     )
-        
-        # self.db_conn.db_cur.execute(
-        #     "INSERT INTO tick_string (source, reqid, recv_time, field, name, string) VALUES (%s, %s, %s, %s, %s, %s)",
-        #     ("ib_api", reqId, time_now, tickType, tick_name, value)
-        # )
 
         insert_str= "INSERT INTO tick_string (source, reqid, recv_time, field, name, string) VALUES (%s, %s, %s, %s, %s, %s)"
         insert_var= ["ib_api", reqId, time_now, tickType, tick_name, value]
         self.db_conn.enqueue("tick_string", insert_str, insert_var)
 
     @overloaded
+    # this seems to be called when calling contract details?
     def tickReqParams(self, tickerId:int, minTick:float, bboExchange:str, snapshotPermissions:int):
         """returns exchange map of a particular contract"""
         self.logAnswer(current_fn_name(), vars())
-        print("<tickReqParams>",
-              " Time recvd: ", datetime.now().isoformat(),
-              " reqId:", tickerId,
-              " minTick:", minTick,
-              " bboExchange:", bboExchange,
-              ",snapshotPermissions:", snapshotPermissions)
+        # print("<tickReqParams>",
+        #       " Time recvd: ", datetime.now().isoformat(),
+        #       " reqId:", tickerId,
+        #       " minTick:", minTick,
+        #       " bboExchange:", bboExchange,
+        #       ",snapshotPermissions:", snapshotPermissions)
 
     @overloaded
     def tickByTickAllLast(self, reqId: int, tickType: int, time: int, price: float,
@@ -318,9 +333,80 @@ class spxTraderWrapper(EWrapper):
         bar.count - the number of trades during the bar's timespan (only available
             for TRADES)."""
 
+        time_now = datetime.now().isoformat()
+
+        self.logAnswer(current_fn_name(), vars())
+        #print("RealTimeBar. TickerId:", reqId, time, open_, high, low, close, volume, wap, count)
+
+        insert_str = "INSERT INTO rtb (source, reqid, recv_time, bar_time, bar_open_, bar_high, bar_low, bar_close, bar_volume, bar_wap, bar_count) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        insert_var = ["ib_api", reqId, time_now, time, open_, high, low, close, volume, wap, count]
+        self.db_conn.enqueue("rtb", insert_str, insert_var) 
+
+    def accountSummary(self, reqId:int, account:str, tag:str, value:str,
+                       currency:str):
+        """Returns the data from the TWS Account Window Summary tab in
+        response to reqAccountSummary()."""
+
+        self.logAnswer(current_fn_name(), vars())    
+        print("Account: ", account, " Tag: ", tag, " Value: ", value, " Currency: ", currency)
+
+    @overloaded
+    def position(self, account:str, contract:Contract, position:Decimal,
+                 avgCost:float):
+        """This event returns real-time positions for all accounts in
+        response to the reqPositions() method."""
+        
+        # whenever a posistion is being updated, unset the event
+        self.positions_event.clear()
+        time_now = datetime.now().isoformat()
+
+        self.logAnswer(current_fn_name(), vars())
+        #print("Position.", "Account:", account, "Symbol:", contract.symbol, "opt exp:", contract.lastTradeDateOrContractMonth, "ConId:", contract.conId, "SecType:", contract.secType,
+        #      "Currency:", contract.currency, "Position:", position, "Avg cost:", avgCost)
+        
+        insert_str = "INSERT INTO positions (source, recv_time, account, position, avg_cost, symbol, sec_type, last_trade_date_or_contract_month, strike, type, multiplier, sec_id_type, sec_id, description) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        insert_var = ["ib_api", time_now, account, position, avgCost, contract.symbol, contract.secType, contract.lastTradeDateOrContractMonth, contract.strike, contract.right, contract.multiplier, contract.secIdType, contract.secId, contract.description]
+        self.db_conn.enqueue("positions", insert_str, insert_var) 
+
+    def positionEnd(self):
+        """This is called once all position data for a given request are
+        received and functions as an end marker for the position() data. """
+
+        self.logAnswer(current_fn_name(), vars())
+        print("")
+        print("----PositionEnd---------------------")    
+        print("")
+
+        # when the posistions are done updating, set the event
+        self.positions_event.set()
+
+    def securityDefinitionOptionParameter(self, reqId:int, exchange:str,
+        underlyingConId:int, tradingClass:str, multiplier:str,
+        expirations:SetOfString, strikes:SetOfFloat):
+        """ Returns the option chain for an underlying on an exchange
+        specified in reqSecDefOptParams There will be multiple callbacks to
+        securityDefinitionOptionParameter if multiple exchanges are specified
+        in reqSecDefOptParams
+
+        reqId - ID of the request initiating the callback
+        underlyingConId - The conID of the underlying security
+        tradingClass -  the option trading class
+        multiplier -    the option multiplier
+        expirations - a list of the expiries for the options of this underlying
+             on this exchange
+        strikes - a list of the possible strikes for options of this underlying
+             on this exchange """
+
         self.logAnswer(current_fn_name(), vars())
 
-        print("RealTimeBar. TickerId:", reqId, time, open_, high, low, close, volume, wap, count)
-        
+
+    def securityDefinitionOptionParameterEnd(self, reqId:int):
+        """ Called when all callbacks to securityDefinitionOptionParameter are
+        complete
+
+        reqId - the ID used in the call to securityDefinitionOptionParameter """
+
+        self.logAnswer(current_fn_name(), vars())
+
 
     
