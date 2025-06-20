@@ -1,16 +1,14 @@
-from spx_trader_fixed_layout import Ui_spx_trader_main_window
 from PySide6.QtWidgets import QMessageBox, QLabel
 from PySide6.QtWidgets import QApplication, QMainWindow
 from PySide6.QtCore import Qt, QAbstractTableModel, QRunnable, QThreadPool
+
+from spx_trader_splitter_layout import Ui_MainWindow
 
 from client_spx_trader import spxTraderClient
 from wrapper_spx_trader import spxTraderWrapper
 from database_spx_trader import spxTraderDBConn
 from ibapi.client import EClient
 import psycopg          
-
-
-
 
 
 class PositionsTableModel(QAbstractTableModel):
@@ -56,7 +54,7 @@ class positionsWorker(QRunnable):
         pass
         
 
-class spxTraderMainWindow(QMainWindow, Ui_spx_trader_main_window): 
+class spxTraderMainWindow(QMainWindow, Ui_MainWindow): 
     def __init__(self, trader: spxTraderClient):
         super().__init__()
         self.trader = trader
@@ -84,9 +82,11 @@ class spxTraderMainWindow(QMainWindow, Ui_spx_trader_main_window):
         self.status_label = QLabel("SPX Trader")
         self.statusBar().addWidget(self.status_label)
 
-        self.positions_button.clicked.connect(self.get_positions)
+        self.positions_pushButton.clicked.connect(self.get_positions)
 
         self.positions_table.setModel(self.positions.model)
+
+        self.sd_comboBox.addItems(["1","2","3","4","5"])
     
     def connect(self):
         if self.trader.connState is not EClient.CONNECTED:

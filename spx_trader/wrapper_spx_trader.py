@@ -2,6 +2,7 @@ import logging
 import threading
 import time
 from datetime import datetime
+import zmq
 
 from ibapi.common import * 
 from ibapi.utils import * 
@@ -20,6 +21,19 @@ from database_spx_trader import spxTraderDBConn
 
 logger = logging.getLogger(__name__)
 
+# zmq ROUTER/DEALER pattern
+# server is the ROUTER, client is the DEALER
+
+    
+
+# listening port for zmq messages
+ZMQ_SERVER_PORT = 50000
+
+# sendig port for zmq messages
+ZMQ_CLIENT_PORT = 50001
+
+
+
 
 class spxTraderWrapper(EWrapper):
     def __init__(self, db_conn:spxTraderDBConn):
@@ -31,6 +45,10 @@ class spxTraderWrapper(EWrapper):
         self.positions_event = threading.Event()
         self.positions_event.clear()
         self.wrapper_events = {}
+
+        self.context = zmq.Context()
+        self.zmq_server_socket = self.context.socket(zmq.REQ)
+        self.zmq_client_socket = self.context.socket(zmq.REP)
 
     # def logAnswer --- EWrapper method
     # def db_conn_setup(self, config):
