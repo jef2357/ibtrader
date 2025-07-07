@@ -14,14 +14,14 @@ class interProcessComm(threading.Thread):
         context = zmq.Context()
         
         match mode:
-            case "SUB"
+            case "SUB":
                 self.socket = context.socket(zmq.SUB)
                 try:
                     self.socket.connect("tcp://localhost:5555")
                     self.socket.setsockopt_string(zmq.SUBSCRIBE, "")
                 except zmq.error.ZMQError as e:
                     logger.error("ipc thread: zmq error: %s", e)
-            case "PUB"
+            case "PUB":
                 self.socket = context.socket(zmq.PUB)
                 try:
                     self.socket.bind("tcp://*:5555")
